@@ -1,36 +1,18 @@
-// routes/orders.js
 const express = require('express');
 const router = express.Router();
-const Order = require('../models/Order');
+const Order = require('../models/Order'); // Make sure case matches the file
 
-// Create a new order
-router.post('/create', async (req, res) => {
+// POST /orders → Save WhatsApp message as order
+router.post('/', async (req, res) => {
   try {
-    const { items, subtotal, discountPercent, total, customerName } = req.body;
-    if (!items || items.length === 0) return res.status(400).json({ message: 'Cart is empty' });
+    const { message } = req.body;
 
-    const order = new Order({
-      items,
-      subtotal,
-      discountPercent,
-      total,
-      customerName: customerName || 'Anonymous',
-      createdAt: new Date(),
-    });
+    if (!message) return res.status(400).json({ message: 'Message is required' });
 
+    const order = new Order({ message });
     await order.save();
-    res.status(201).json({ message: 'Order placed successfully', order });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
 
-// Get all orders (optional)
-router.get('/', async (req, res) => {
-  try {
-    const orders = await Order.find();
-    res.json(orders);
+    res.status(201).json({ message: 'Order saved successfully', order });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
