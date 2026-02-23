@@ -3,6 +3,7 @@
 // ===================
 
 // Load environment variables
+const ordersRouter = require('./routes/orders'); // Add this
 require('dotenv').config();
 
 // Core dependencies
@@ -51,6 +52,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ===================
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
+app.use('/orders', ordersRouter);
 
 // ===================
 // 404 Error Handler
