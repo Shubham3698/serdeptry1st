@@ -2,7 +2,7 @@
 // app.js / server.js
 // ===================
 
-// Load environment variables from .env
+// Load environment variables
 require('dotenv').config();
 
 // Core dependencies
@@ -11,6 +11,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const mongoose = require('mongoose');
+const cors = require('cors'); // CORS
 
 // Routers
 const indexRouter = require('./routes/index');
@@ -38,6 +39,11 @@ app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+// ✅ Enable CORS for all origins (so independent HTML can hit server)
+app.use(cors());
+
+// Serve static files from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ===================
