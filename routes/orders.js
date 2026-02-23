@@ -2,9 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 
-// ===================================
 // POST /orders → Save order
-// ===================================
 router.post('/', async (req, res) => {
   try {
     const { products, subtotal, discountPercent, finalTotal, message } = req.body;
@@ -34,9 +32,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ===================================
 // GET /orders → Fetch all orders (Admin panel)
-// ===================================
 router.get('/', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
