@@ -1,9 +1,13 @@
-var express = require('express');
-var router = express.Router();
+const express = require('express');
+const path = require('path');
+const router = express.Router();
 
-/* GET home page. */
-router.get('/', function(req, res, next) {
-  res.render('index', { title: 'Express' });
+// React build path
+const reactBuildPath = path.join(__dirname, '../client/build');
+
+// GET / - serve React index.html
+router.get('/', (req, res) => {
+  res.sendFile(path.join(reactBuildPath, 'index.html'));
 });
 
 module.exports = router;

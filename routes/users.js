@@ -1,59 +1,32 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 
-// ----- API: Create user via JSON -----
-router.post('/create', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ message: 'All fields required' });
+// ===================
+// POST /api/users/signup
+// ===================
+router.post('/signup', async (req, res) => {
+  const { name, email, password } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: 'Email already exists' });
-
-    const user = new User({ name, email, password });
-    await user.save();
-
-    res.status(201).json({ message: 'User created successfully', user });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, message: "Name, email and password are required" });
   }
-});
 
-// ----- API: Get all users -----
-router.get('/', async (req, res) => {
-  try {
-    const users = await User.find();
-    res.json(users);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+  // Check if email exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    return res.status(400).json({ success: false, message: "Email already registered" });
   }
-});
 
-// ----- EJS Form: Show create user form -----
-router.get('/form', (req, res) => {
-  res.render('create-user');
-});
+  // Hash password
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-// ----- Handle form submit -----
-router.post('/create-form', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) return res.send('All fields required');
+  // Create user
+  const newUser = new User({ name, email, password: hashedPassword });
+  await newUser.save();
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.send('Email already exists');
-
-    const user = new User({ name, email, password });
-    await user.save();
-
-    res.send(`✅ User created successfully: ${name}`);
-  } catch (err) {
-    console.error(err);
-    res.send('Server error');
-  }
+  return res.status(201).json({ success: true, message: "User created successfully" });
 });
 
 module.exports = router;
