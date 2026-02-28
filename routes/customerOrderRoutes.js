@@ -64,6 +64,21 @@ router.get("/:id", async (req, res) => {
 });
 
 // ===================
+// GET ORDERS BY USER EMAIL
+// ===================
+router.get("/user/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const orders = await CustomerOrder.find({ userEmail: email }).sort({ createdAt: -1 });
+
+    res.json({ success: true, data: orders });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ===================
 // PATCH ORDER STATUS
 // ===================
 router.patch("/:id", async (req, res) => {
