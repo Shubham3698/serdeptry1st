@@ -2,10 +2,8 @@ const mongoose = require("mongoose");
 
 const customerOrderSchema = new mongoose.Schema(
   {
-    userEmail: {
-      type: String,
-      required: true,
-    },
+    userEmail: { type: String, required: true },
+    userName: { type: String, required: true }, // <-- Added
 
     products: [
       {
@@ -22,13 +20,13 @@ const customerOrderSchema = new mongoose.Schema(
 
     orderStatus: {
       type: String,
-      default: "Pending",
+      enum: ["Received", "Processing", "Shipped", "Delivered", "Cancelled"],
+      default: "Received",
     },
+
+    message: { type: String },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "CustomerOrder",
-  customerOrderSchema
-);
+module.exports = mongoose.model("CustomerOrder", customerOrderSchema);
