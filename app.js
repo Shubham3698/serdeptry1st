@@ -1,78 +1,46 @@
-// ===================
-// app.js / server.js
-// ===================
-
-// Load environment variables
-require('dotenv').config();
-
-// Core dependencies
-const express = require('express');
-const path = require('path');
-const cookieParser = require('cookie-parser');
-const logger = require('morgan');
-const mongoose = require('mongoose');
-const cors = require('cors');
-
-// Routers
-const indexRouter = require('./routes/index');
-const usersRouter = require('./routes/users');
-const ordersRouter = require('./routes/orders');
+require("dotenv").config();
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
 
 const app = express();
 
-// ===================
+// =====================
+// Middlewares
+// =====================
+app.use(cors());
+app.use(express.json());
+
+// =====================
 // MongoDB Connection
-// ===================
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+// =====================
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => console.log(err));
 
-// ===================
-// Middleware
-// ===================
-app.use(cors()); // Allow frontend requests
-app.use(logger('dev'));
-app.use(express.json()); // 🔥 VERY IMPORTANT
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+// =====================
+// Routes Import
+// =====================
+const customerOrderRoutes = require("./routes/customerOrderRoutes");
 
-// ===================
-// Routes
-// ===================
-app.use('/', indexRouter);
-app.use('/api/users', usersRouter);  // prefix /api/users
-app.use('/orders', ordersRouter);
+// =====================
+// Routes Use
+// =====================
+app.use("/api/customer-orders", customerOrderRoutes);
 
-// ===================
-// 404 Handler (JSON)
-// ===================
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-  });
+// =====================
+// Test Route
+// =====================
+app.get("/", (req, res) => {
+  res.send("Server Running 🚀");
 });
 
-// ===================
-// Global Error Handler (JSON)
-// ===================
-app.use((err, req, res, next) => {
-  console.error("🔥 Server Error:", err);
+// =====================
+// Server Start
+// =====================
+const PORT = process.env.PORT || 3000;
 
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-  });
+app.listen(PORT, () => {
+  console.log(`🔥 Server running on port ${PORT}`);
 });
-
-// ===================
-// Start Server
-// ===================
-const port = process.env.PORT || 3000; // 🔹 backend now runs on 5000
-
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
-
-module.exports = app;
