@@ -11,6 +11,7 @@ router.post("/create", async (req, res) => {
   try {
     const { userName, userEmail, products, subtotal, discount, total, message } = req.body;
 
+    // Validation
     if (!userName || !userEmail) {
       return res.status(400).json({ success: false, message: "Name and Email are required" });
     }
@@ -38,7 +39,7 @@ router.post("/create", async (req, res) => {
 });
 
 // ===================
-// GET ALL ORDERS
+// GET ALL ORDERS (For Admin Panel)
 // ===================
 router.get("/", async (req, res) => {
   try {
@@ -77,7 +78,7 @@ router.get("/user/:email", async (req, res) => {
 });
 
 // ===================
-// PATCH ORDER STATUS (Safe)
+// PATCH ORDER STATUS
 // ===================
 router.patch("/:id", async (req, res) => {
   try {
