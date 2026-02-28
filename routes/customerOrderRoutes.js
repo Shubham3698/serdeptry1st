@@ -69,9 +69,7 @@ router.get("/:id", async (req, res) => {
 router.get("/user/:email", async (req, res) => {
   try {
     const { email } = req.params;
-
     const orders = await CustomerOrder.find({ userEmail: email }).sort({ createdAt: -1 });
-
     res.json({ success: true, data: orders });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -79,11 +77,15 @@ router.get("/user/:email", async (req, res) => {
 });
 
 // ===================
-// PATCH ORDER STATUS
+// PATCH ORDER STATUS (Safe)
 // ===================
 router.patch("/:id", async (req, res) => {
   try {
     const { orderStatus } = req.body;
+
+    if (!orderStatus) {
+      return res.status(400).json({ success: false, message: "orderStatus is required" });
+    }
 
     const order = await CustomerOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
@@ -97,7 +99,8 @@ router.patch("/:id", async (req, res) => {
 
     res.json({ success: true, message: "Order status updated", data: order });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("PATCH /:id error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
