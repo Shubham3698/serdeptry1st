@@ -4,6 +4,15 @@ const CustomerOrder = require("../models/CustomerOrder");
 
 console.log("✅ customerOrderRoutes loaded");
 
+// Helper: Generate short order ID
+async function generateShortOrderId(userName) {
+  const prefix = userName.trim().substring(0, 3).toUpperCase();
+  const lastOrder = await CustomerOrder.find({ userName }).sort({ createdAt: -1 }).limit(1);
+  const lastSerial = lastOrder.length > 0 ? parseInt(lastOrder[0].shortOrderId.split('-')[1]) : 0;
+  const newSerial = (lastSerial + 1).toString().padStart(3, '0');
+  return `${prefix}-${newSerial}`;
+}
+
 // ===================
 // CREATE ORDER
 // ===================
@@ -11,10 +20,12 @@ router.post("/create", async (req, res) => {
   try {
     const { userName, userEmail, products, subtotal, discount, total, message } = req.body;
 
-    // Validation
     if (!userName || !userEmail) {
       return res.status(400).json({ success: false, message: "Name and Email are required" });
     }
+
+    // Generate shortOrderId: first 3 letters of userName + timestamp
+    const shortOrderId = userName.substring(0, 3).toUpperCase() + Date.now().toString().slice(-5);
 
     const order = new CustomerOrder({
       userName,
@@ -24,6 +35,7 @@ router.post("/create", async (req, res) => {
       discount,
       total,
       message,
+      shortOrderId,
     });
 
     await order.save();
@@ -34,12 +46,13 @@ router.post("/create", async (req, res) => {
       data: order,
     });
   } catch (err) {
+    console.error("POST /create error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
 // ===================
-// GET ALL ORDERS (For Admin Panel)
+// GET ALL ORDERS
 // ===================
 router.get("/", async (req, res) => {
   try {
@@ -57,7 +70,6 @@ router.get("/:id", async (req, res) => {
   try {
     const order = await CustomerOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
-
     res.json({ success: true, data: order });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -84,14 +96,13 @@ router.patch("/:id", async (req, res) => {
   try {
     const { orderStatus } = req.body;
 
-    if (!orderStatus) {
+    if (!orderStatus)
       return res.status(400).json({ success: false, message: "orderStatus is required" });
-    }
 
     const order = await CustomerOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-    const validStatuses = ["Received", "Processing", "Shipped", "Delivered", "Cancelled"];
+    const validStatuses = ["Pending","Received","Processing","Shipped","Delivered","Cancelled"];
     if (!validStatuses.includes(orderStatus))
       return res.status(400).json({ success: false, message: "Invalid status" });
 
