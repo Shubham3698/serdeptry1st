@@ -2,34 +2,41 @@ const express = require("express");
 const router = express.Router();
 const CustomerOrder = require("../models/CustomerOrder");
 
-console.log("✅ customerOrderRoutes loaded");
-
-// Helper: Generate short order ID
-async function generateShortOrderId(userName) {
-  const prefix = userName.trim().substring(0, 3).toUpperCase();
-  const lastOrder = await CustomerOrder.find({ userName }).sort({ createdAt: -1 }).limit(1);
-  const lastSerial = lastOrder.length > 0 ? parseInt(lastOrder[0].shortOrderId.split('-')[1]) : 0;
-  const newSerial = (lastSerial + 1).toString().padStart(3, '0');
-  return `${prefix}-${newSerial}`;
-}
+console.log("✅ customerOrderRoutes loaded with Address Support");
 
 // ===================
-// CREATE ORDER
+// CREATE ORDER (Updated with Address)
 // ===================
 router.post("/create", async (req, res) => {
   try {
-    const { userName, userEmail, products, subtotal, discount, total, message } = req.body;
+    // Destructuring address along with other fields
+    const { 
+      userName, 
+      userEmail, 
+      address, // 🔥 Coming from your AddressModal
+      products, 
+      subtotal, 
+      discount, 
+      total, 
+      message 
+    } = req.body;
 
+    // Validation
     if (!userName || !userEmail) {
       return res.status(400).json({ success: false, message: "Name and Email are required" });
     }
 
-    // Generate shortOrderId: first 3 letters of userName + timestamp
+    if (!address || !address.phone || !address.pincode) {
+      return res.status(400).json({ success: false, message: "Full Address and Phone are required" });
+    }
+
+    // Generate shortOrderId: first 3 letters of userName + timestamp (Existing logic)
     const shortOrderId = userName.substring(0, 3).toUpperCase() + Date.now().toString().slice(-5);
 
     const order = new CustomerOrder({
       userName,
       userEmail,
+      address, // ✅ Saving the address object in DB
       products,
       subtotal,
       discount,
@@ -52,7 +59,7 @@ router.post("/create", async (req, res) => {
 });
 
 // ===================
-// GET ALL ORDERS
+// GET ALL ORDERS (Existing)
 // ===================
 router.get("/", async (req, res) => {
   try {
@@ -64,7 +71,7 @@ router.get("/", async (req, res) => {
 });
 
 // ===================
-// GET ORDER BY ID
+// GET ORDER BY ID (Existing)
 // ===================
 router.get("/:id", async (req, res) => {
   try {
@@ -77,7 +84,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ===================
-// GET ORDERS BY USER EMAIL
+// GET ORDERS BY USER EMAIL (Existing)
 // ===================
 router.get("/user/:email", async (req, res) => {
   try {
@@ -90,7 +97,7 @@ router.get("/user/:email", async (req, res) => {
 });
 
 // ===================
-// PATCH ORDER STATUS
+// PATCH ORDER STATUS (Existing)
 // ===================
 router.patch("/:id", async (req, res) => {
   try {
