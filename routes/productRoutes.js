@@ -69,6 +69,23 @@ router.put("/update/:id", async (req, res) => {
     }
 });
 
+router.get("/search", async (req, res) => {
+    try {
+        const query = req.query.q;
+        const results = await Product.find({
+            $or: [
+                { title: { $regex: query, $options: "i" } }, // 'i' matlab case-insensitive
+                { tags: { $in: [new RegExp(query, "i")] } },
+                { category: { $regex: query, $options: "i" } }
+            ]
+        });
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
 // 🔥 4. DELETE DATA (Admin Delete)
 router.delete("/delete/:id", async (req, res) => {
     try {
