@@ -1,5 +1,5 @@
 // ===============================
-// server.js (FINAL MERGED VERSION)
+// server.js (UPDATED VERSION)
 // ===============================
 
 require("dotenv").config();
@@ -38,6 +38,7 @@ const indexRouter = require("./routes/index");
 const usersRouter = require("./routes/users");
 const ordersRouter = require("./routes/orders");
 const customerOrderRoutes = require("./routes/customerOrderRoutes");
+const productRoutes = require("./routes/productRoutes"); // 🔥 Naya Route Import Kiya
 
 // =====================
 // Routes Use
@@ -45,9 +46,10 @@ const customerOrderRoutes = require("./routes/customerOrderRoutes");
 app.use("/", indexRouter);
 app.use("/api/users", usersRouter);
 app.use("/orders", ordersRouter);
-
-// 🔥 NEW FUNCTIONALITY
 app.use("/api/customer-orders", customerOrderRoutes);
+
+// 🔥 ADMIN PANEL & PRODUCT DATA FUNCTIONALITY
+app.use("/api/products", productRoutes); 
 
 // =====================
 // Test Route
