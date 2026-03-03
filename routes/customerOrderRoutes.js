@@ -2,18 +2,17 @@ const express = require("express");
 const router = express.Router();
 const CustomerOrder = require("../models/CustomerOrder");
 
-console.log("✅ customerOrderRoutes loaded with Address Support");
+console.log("✅ customerOrderRoutes loaded with Address & Cancel Request Support");
 
 // ===================
-// CREATE ORDER (Updated with Address)
+// CREATE ORDER (Address aur purana logic sab intact hai)
 // ===================
 router.post("/create", async (req, res) => {
   try {
-    // Destructuring address along with other fields
     const { 
       userName, 
       userEmail, 
-      address, // 🔥 Coming from your AddressModal
+      address, 
       products, 
       subtotal, 
       discount, 
@@ -21,7 +20,7 @@ router.post("/create", async (req, res) => {
       message 
     } = req.body;
 
-    // Validation
+    // Validation (Wahi purani wali)
     if (!userName || !userEmail) {
       return res.status(400).json({ success: false, message: "Name and Email are required" });
     }
@@ -30,13 +29,12 @@ router.post("/create", async (req, res) => {
       return res.status(400).json({ success: false, message: "Full Address and Phone are required" });
     }
 
-    // Generate shortOrderId: first 3 letters of userName + timestamp (Existing logic)
     const shortOrderId = userName.substring(0, 3).toUpperCase() + Date.now().toString().slice(-5);
 
     const order = new CustomerOrder({
       userName,
       userEmail,
-      address, // ✅ Saving the address object in DB
+      address, // ✅ Address object database mein save hoga
       products,
       subtotal,
       discount,
@@ -59,7 +57,37 @@ router.post("/create", async (req, res) => {
 });
 
 // ===================
-// GET ALL ORDERS (Existing)
+// 🔥 NEW: CANCEL ORDER REQUEST (Sirf Reason Update Karega)
+// ===================
+router.post("/cancel/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: "Reason is required" });
+    }
+
+    const order = await CustomerOrder.findById(id);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+    // ✅ Yahan hum status "Cancelled" nahi kar rahe!
+    // Hum sirf cancelReason save kar rahe hain taaki Admin dekh sake.
+    order.cancelReason = reason; 
+    await order.save();
+
+    res.json({ 
+      success: true, 
+      message: "Cancellation request sent to Admin. Status remains unchanged until reviewed.", 
+      data: order 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ===================
+// GET ALL ORDERS (Purana logic)
 // ===================
 router.get("/", async (req, res) => {
   try {
@@ -71,7 +99,7 @@ router.get("/", async (req, res) => {
 });
 
 // ===================
-// GET ORDER BY ID (Existing)
+// GET ORDER BY ID (Purana logic)
 // ===================
 router.get("/:id", async (req, res) => {
   try {
@@ -84,7 +112,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ===================
-// GET ORDERS BY USER EMAIL (Existing)
+// GET ORDERS BY USER EMAIL (Purana logic)
 // ===================
 router.get("/user/:email", async (req, res) => {
   try {
@@ -97,7 +125,7 @@ router.get("/user/:email", async (req, res) => {
 });
 
 // ===================
-// PATCH ORDER STATUS (Existing)
+// PATCH ORDER STATUS (Admin Panel ke liye)
 // ===================
 router.patch("/:id", async (req, res) => {
   try {
@@ -116,7 +144,7 @@ router.patch("/:id", async (req, res) => {
     order.orderStatus = orderStatus;
     await order.save();
 
-    res.json({ success: true, message: "Order status updated", data: order });
+    res.json({ success: true, message: "Order status updated successfully", data: order });
   } catch (err) {
     console.error("PATCH /:id error:", err.message);
     res.status(500).json({ success: false, message: "Internal server error" });

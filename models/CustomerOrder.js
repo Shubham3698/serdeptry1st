@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const customerOrderSchema = new mongoose.Schema({
   userName: { type: String, required: true },
   userEmail: { type: String, required: true },
-  // 🔥 New Address Field Added
+  // ✅ Purana Address Field (Protected)
   address: {
     fullName: String,
     phone: String,
@@ -17,6 +17,8 @@ const customerOrderSchema = new mongoose.Schema({
   discount: Number,
   total: Number,
   message: String,
+  // 🔥 Naya Field: User ka cancellation reason yahan save hoga
+  cancelReason: { type: String, default: "" }, 
   orderStatus: { type: String, default: "Pending" },
   shortOrderId: { type: String, unique: true }, 
 }, { timestamps: true });
