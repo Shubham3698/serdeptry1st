@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const customerOrderSchema = new mongoose.Schema({
   userName: { type: String, required: true },
   userEmail: { type: String, required: true },
-  // ✅ Purana Address Field (Protected)
+  // ✅ Purana Address Field (Jaisa tha waise hi hai)
   address: {
     fullName: String,
     phone: String,
@@ -17,10 +17,23 @@ const customerOrderSchema = new mongoose.Schema({
   discount: Number,
   total: Number,
   message: String,
-  // 🔥 Naya Field: User ka cancellation reason yahan save hoga
+  // 🔥 Cancellation logic intact
   cancelReason: { type: String, default: "" }, 
   orderStatus: { type: String, default: "Pending" },
   shortOrderId: { type: String, unique: true }, 
+
+  // ==========================================
+  // 🚀 RAZORPAY NEW FIELDS (Adding Safely)
+  // ==========================================
+  paymentStatus: { 
+    type: String, 
+    enum: ["Unpaid", "Paid", "Refunded"], 
+    default: "Unpaid" 
+  },
+  razorpayOrderId: { type: String, default: "" },
+  razorpayPaymentId: { type: String, default: "" },
+  // ==========================================
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("CustomerOrder", customerOrderSchema);

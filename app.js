@@ -39,6 +39,7 @@ const usersRouter = require("./routes/users");
 const ordersRouter = require("./routes/orders");
 const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const productRoutes = require("./routes/productRoutes"); // 🔥 Naya Route Import Kiya
+const paymentRoutes = require("./routes/paymentRoutes");
 
 // =====================
 // Routes Use
@@ -47,6 +48,7 @@ app.use("/", indexRouter);
 app.use("/api/users", usersRouter);
 app.use("/orders", ordersRouter);
 app.use("/api/customer-orders", customerOrderRoutes);
+app.use("/api/payment", paymentRoutes);
 
 // 🔥 ADMIN PANEL & PRODUCT DATA FUNCTIONALITY
 app.use("/api/products", productRoutes); 

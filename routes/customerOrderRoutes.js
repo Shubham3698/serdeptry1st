@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const CustomerOrder = require("../models/CustomerOrder");
+const crypto = require("crypto"); // Signature verify karne ke liye
 
-console.log("✅ customerOrderRoutes loaded with Address & Cancel Request Support");
+console.log("✅ customerOrderRoutes loaded with Address, Cancel Request & Razorpay Support");
 
 // ===================
-// CREATE ORDER (Address aur purana logic sab intact hai)
+// CREATE ORDER (Puraana logic intact hai)
 // ===================
 router.post("/create", async (req, res) => {
   try {
@@ -34,13 +35,16 @@ router.post("/create", async (req, res) => {
     const order = new CustomerOrder({
       userName,
       userEmail,
-      address, // ✅ Address object database mein save hoga
+      address, 
       products,
       subtotal,
       discount,
       total,
       message,
       shortOrderId,
+      // Naye fields default values ke saath
+      paymentStatus: "Unpaid",
+      orderStatus: "Pending"
     });
 
     await order.save();
@@ -57,7 +61,53 @@ router.post("/create", async (req, res) => {
 });
 
 // ===================
-// 🔥 NEW: CANCEL ORDER REQUEST (Sirf Reason Update Karega)
+// 🔥 NEW: VERIFY PAYMENT & CONFIRM ORDER
+// Isse tumhara database update hoga payment ke baad
+// ===================
+router.post("/verify-and-confirm", async (req, res) => {
+  const { shortOrderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+  try {
+    // 1. Signature Verification (Security check)
+    const sign = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSign = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(sign.toString())
+      .digest("hex");
+
+    if (razorpay_signature !== expectedSign) {
+      return res.status(400).json({ success: false, message: "Invalid Payment Signature" });
+    }
+
+    // 2. Database Update
+    // Hum shortOrderId se order dhund rahe hain aur use Paid mark kar rahe hain
+    const updatedOrder = await CustomerOrder.findOneAndUpdate(
+      { shortOrderId: shortOrderId },
+      { 
+        paymentStatus: "Paid", 
+        razorpayPaymentId: razorpay_payment_id,
+        orderStatus: "Received" // Payment ke baad Received status
+      },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).json({ success: false, message: "Order not found in Database" });
+    }
+
+    res.json({ 
+      success: true, 
+      message: "Payment Verified & Order Confirmed", 
+      data: updatedOrder 
+    });
+  } catch (err) {
+    console.error("Verification Error:", err.message);
+    res.status(500).json({ success: false, message: "Internal Server Error during verification" });
+  }
+});
+
+// ===================
+// 🔥 CANCEL ORDER REQUEST (Puraana logic intact)
 // ===================
 router.post("/cancel/:id", async (req, res) => {
   try {
@@ -71,14 +121,12 @@ router.post("/cancel/:id", async (req, res) => {
     const order = await CustomerOrder.findById(id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-    // ✅ Yahan hum status "Cancelled" nahi kar rahe!
-    // Hum sirf cancelReason save kar rahe hain taaki Admin dekh sake.
     order.cancelReason = reason; 
     await order.save();
 
     res.json({ 
       success: true, 
-      message: "Cancellation request sent to Admin. Status remains unchanged until reviewed.", 
+      message: "Cancellation request sent to Admin.", 
       data: order 
     });
   } catch (err) {
@@ -87,7 +135,7 @@ router.post("/cancel/:id", async (req, res) => {
 });
 
 // ===================
-// GET ALL ORDERS (Purana logic)
+// GET ALL ORDERS
 // ===================
 router.get("/", async (req, res) => {
   try {
@@ -99,7 +147,7 @@ router.get("/", async (req, res) => {
 });
 
 // ===================
-// GET ORDER BY ID (Purana logic)
+// GET ORDER BY ID
 // ===================
 router.get("/:id", async (req, res) => {
   try {
@@ -112,7 +160,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ===================
-// GET ORDERS BY USER EMAIL (Purana logic)
+// GET ORDERS BY USER EMAIL
 // ===================
 router.get("/user/:email", async (req, res) => {
   try {
@@ -125,28 +173,24 @@ router.get("/user/:email", async (req, res) => {
 });
 
 // ===================
-// PATCH ORDER STATUS (Admin Panel ke liye)
+// PATCH ORDER STATUS (Admin Panel)
 // ===================
 router.patch("/:id", async (req, res) => {
   try {
     const { orderStatus } = req.body;
-
-    if (!orderStatus)
-      return res.status(400).json({ success: false, message: "orderStatus is required" });
+    if (!orderStatus) return res.status(400).json({ success: false, message: "orderStatus is required" });
 
     const order = await CustomerOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
     const validStatuses = ["Pending","Received","Processing","Shipped","Delivered","Cancelled"];
-    if (!validStatuses.includes(orderStatus))
-      return res.status(400).json({ success: false, message: "Invalid status" });
+    if (!validStatuses.includes(orderStatus)) return res.status(400).json({ success: false, message: "Invalid status" });
 
     order.orderStatus = orderStatus;
     await order.save();
 
     res.json({ success: true, message: "Order status updated successfully", data: order });
   } catch (err) {
-    console.error("PATCH /:id error:", err.message);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
