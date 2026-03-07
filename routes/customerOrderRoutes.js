@@ -1,13 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const CustomerOrder = require("../models/CustomerOrder");
-const crypto = require("crypto"); // Signature verify karne ke liye
+const crypto = require("crypto"); 
 
-console.log("✅ customerOrderRoutes loaded with Address, Cancel Request & Razorpay Support");
+console.log("✅ customerOrderRoutes: Active with Address & Razorpay support");
 
-// ===================
-// CREATE ORDER (Puraana logic intact hai)
-// ===================
+// ==========================================
+// 1. CREATE ORDER (Initial Step - Address Intact)
+// ==========================================
 router.post("/create", async (req, res) => {
   try {
     const { 
@@ -21,7 +21,7 @@ router.post("/create", async (req, res) => {
       message 
     } = req.body;
 
-    // Validation (Wahi purani wali)
+    // Validation
     if (!userName || !userEmail) {
       return res.status(400).json({ success: false, message: "Name and Email are required" });
     }
@@ -42,9 +42,8 @@ router.post("/create", async (req, res) => {
       total,
       message,
       shortOrderId,
-      // Naye fields default values ke saath
-      paymentStatus: "Unpaid",
-      orderStatus: "Pending"
+      paymentStatus: "Unpaid", // Default
+      orderStatus: "Pending"   // Default
     });
 
     await order.save();
@@ -56,19 +55,23 @@ router.post("/create", async (req, res) => {
     });
   } catch (err) {
     console.error("POST /create error:", err.message);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: "Failed to create order on server" });
   }
 });
 
-// ===================
-// 🔥 NEW: VERIFY PAYMENT & CONFIRM ORDER
-// Isse tumhara database update hoga payment ke baad
-// ===================
+// ==========================================
+// 2. 🔥 VERIFY PAYMENT & CONFIRM ORDER
+// ==========================================
 router.post("/verify-and-confirm", async (req, res) => {
   const { shortOrderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
   try {
-    // 1. Signature Verification (Security check)
+    // Basic verification check for Secret Key
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+        return res.status(500).json({ success: false, message: "Backend Secret Key not configured!" });
+    }
+
+    // 1. Signature Verification
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -79,20 +82,19 @@ router.post("/verify-and-confirm", async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Payment Signature" });
     }
 
-    // 2. Database Update
-    // Hum shortOrderId se order dhund rahe hain aur use Paid mark kar rahe hain
+    // 2. Database Update - Mark as Paid
     const updatedOrder = await CustomerOrder.findOneAndUpdate(
       { shortOrderId: shortOrderId },
       { 
         paymentStatus: "Paid", 
         razorpayPaymentId: razorpay_payment_id,
-        orderStatus: "Received" // Payment ke baad Received status
+        orderStatus: "Received" // Automatic move to Received
       },
       { new: true }
     );
 
     if (!updatedOrder) {
-      return res.status(404).json({ success: false, message: "Order not found in Database" });
+      return res.status(404).json({ success: false, message: "Order not found for verification" });
     }
 
     res.json({ 
@@ -106,9 +108,9 @@ router.post("/verify-and-confirm", async (req, res) => {
   }
 });
 
-// ===================
-// 🔥 CANCEL ORDER REQUEST (Puraana logic intact)
-// ===================
+// ==========================================
+// 3. CANCEL ORDER REQUEST (Logic Intact)
+// ==========================================
 router.post("/cancel/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -134,9 +136,9 @@ router.post("/cancel/:id", async (req, res) => {
   }
 });
 
-// ===================
-// GET ALL ORDERS
-// ===================
+// ==========================================
+// 4. ADMIN & USER FETCH ROUTES (Logic Intact)
+// ==========================================
 router.get("/", async (req, res) => {
   try {
     const orders = await CustomerOrder.find().sort({ createdAt: -1 });
@@ -146,9 +148,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ===================
-// GET ORDER BY ID
-// ===================
 router.get("/:id", async (req, res) => {
   try {
     const order = await CustomerOrder.findById(req.params.id);
@@ -159,9 +158,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ===================
-// GET ORDERS BY USER EMAIL
-// ===================
 router.get("/user/:email", async (req, res) => {
   try {
     const { email } = req.params;
@@ -172,9 +168,9 @@ router.get("/user/:email", async (req, res) => {
   }
 });
 
-// ===================
-// PATCH ORDER STATUS (Admin Panel)
-// ===================
+// ==========================================
+// 5. PATCH ORDER STATUS (Logic Intact)
+// ==========================================
 router.patch("/:id", async (req, res) => {
   try {
     const { orderStatus } = req.body;

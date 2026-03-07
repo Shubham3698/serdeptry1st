@@ -1,7 +1,3 @@
-// ===============================
-// server.js (UPDATED VERSION)
-// ===============================
-
 require("dotenv").config();
 
 const express = require("express");
@@ -14,17 +10,33 @@ const logger = require("morgan");
 const app = express();
 
 // =====================
+// Proxy Trust (Required for Render/Vercel)
+// =====================
+app.set("trust proxy", 1);
+
+// =====================
 // MongoDB Connection
 // =====================
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected"))
+  .then(() => console.log("✅ MongoDB Connected: Dameeto DB"))
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // =====================
 // Middlewares
 // =====================
-app.use(cors());
+
+// 🔥 CORS Update: Isme apna final frontend URL zaroor dalo
+app.use(cors({
+  origin: [
+    "http://localhost:5173", 
+    "https://dameeto1st.vercel.app", // 👈 Yahan apna asli frontend URL dalo
+  ], 
+  methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(logger("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -38,7 +50,7 @@ const indexRouter = require("./routes/index");
 const usersRouter = require("./routes/users");
 const ordersRouter = require("./routes/orders");
 const customerOrderRoutes = require("./routes/customerOrderRoutes");
-const productRoutes = require("./routes/productRoutes"); // 🔥 Naya Route Import Kiya
+const productRoutes = require("./routes/productRoutes"); 
 const paymentRoutes = require("./routes/paymentRoutes");
 
 // =====================
@@ -47,17 +59,19 @@ const paymentRoutes = require("./routes/paymentRoutes");
 app.use("/", indexRouter);
 app.use("/api/users", usersRouter);
 app.use("/orders", ordersRouter);
-app.use("/api/customer-orders", customerOrderRoutes);
-app.use("/api/payment", paymentRoutes);
-
-// 🔥 ADMIN PANEL & PRODUCT DATA FUNCTIONALITY
+app.use("/api/customer-orders", customerOrderRoutes); 
+app.use("/api/payment", paymentRoutes);      
 app.use("/api/products", productRoutes); 
 
 // =====================
-// Test Route
+// Test Route (Deployment Check)
 // =====================
 app.get("/api/test", (req, res) => {
-  res.json({ message: "API Working 🚀" });
+  res.json({ 
+    success: true,
+    message: "Dameeto API is Live 🚀",
+    timestamp: new Date()
+  });
 });
 
 // =====================
@@ -66,7 +80,7 @@ app.get("/api/test", (req, res) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: "Route not found",
+    message: "Requested Route Not Found",
   });
 });
 
@@ -74,11 +88,10 @@ app.use((req, res) => {
 // Global Error Handler
 // =====================
 app.use((err, req, res, next) => {
-  console.error("🔥 Server Error:", err);
-
+  console.error("🔥 Server Error Log:", err.stack);
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || "Internal Server Error",
+    message: err.message || "Something went wrong on the server",
   });
 });
 
@@ -89,6 +102,7 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 module.exports = app;
