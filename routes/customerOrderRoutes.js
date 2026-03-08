@@ -3,10 +3,10 @@ const router = express.Router();
 const CustomerOrder = require("../models/CustomerOrder");
 const crypto = require("crypto");
 
-console.log("✅ customerOrderRoutes: Active (Optimized for Payment-First flow)");
+console.log("✅ customerOrderRoutes: Active (Optimized for Frontend-Generated IDs)");
 
 // ============================================================
-// 1. CREATE & VERIFY ORDER (Ab order tabhi banega jab payment verified hogi)
+// 1. CREATE & VERIFY ORDER (Ab Frontend wali ID hi save hogi)
 // ============================================================
 router.post("/create", async (req, res) => {
   try {
@@ -19,18 +19,18 @@ router.post("/create", async (req, res) => {
       discount, 
       total, 
       message,
-      // Razorpay data jo frontend ab saath mein bhej raha hai
+      shortOrderId, // 🔥 Frontend se aayi hui ID
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature
     } = req.body;
 
     // A. Validation
-    if (!userName || !userEmail || !address || !razorpay_payment_id) {
+    if (!userName || !userEmail || !shortOrderId || !razorpay_payment_id) {
       return res.status(400).json({ success: false, message: "Missing required order or payment data" });
     }
 
-    // B. Signature Verification (Security check pehle)
+    // B. Signature Verification
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -38,13 +38,10 @@ router.post("/create", async (req, res) => {
       .digest("hex");
 
     if (razorpay_signature !== expectedSign) {
-      return res.status(400).json({ success: false, message: "Payment verification failed! Invalid signature." });
+      return res.status(400).json({ success: false, message: "Payment verification failed!" });
     }
 
-    // C. Order ID Generate karo
-    const shortOrderId = userName.substring(0, 3).toUpperCase() + Date.now().toString().slice(-5);
-
-    // D. Database mein Save karo (Directly as 'Paid' and 'Received')
+    // C. Database mein Save karo (Using shortOrderId from Frontend)
     const order = new CustomerOrder({
       userName,
       userEmail,
@@ -54,9 +51,9 @@ router.post("/create", async (req, res) => {
       discount,
       total,
       message,
-      shortOrderId,
+      shortOrderId, // 🔥 Asli ID wahi jo user ko dikhi thi
       paymentStatus: "Paid", 
-      orderStatus: "Received", // Kyunki paise mil gaye hain
+      orderStatus: "Received",
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id
     });
@@ -65,7 +62,7 @@ router.post("/create", async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Order Verified and Created Successfully",
+      message: "Order Created Successfully",
       data: order,
     });
 
@@ -76,7 +73,7 @@ router.post("/create", async (req, res) => {
 });
 
 // ==========================================
-// 2. CANCEL ORDER REQUEST (Purani logic intact)
+// 2. CANCEL ORDER REQUEST (Logic Intact)
 // ==========================================
 router.post("/cancel/:id", async (req, res) => {
   try {
@@ -89,7 +86,6 @@ router.post("/cancel/:id", async (req, res) => {
 
     order.cancelReason = reason; 
     await order.save();
-
     res.json({ success: true, message: "Cancellation request sent.", data: order });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -97,7 +93,7 @@ router.post("/cancel/:id", async (req, res) => {
 });
 
 // ==========================================
-// 3. ADMIN & USER FETCH ROUTES (Saari purani cheezein safe hain)
+// 3. ADMIN & USER FETCH (Logic Intact)
 // ==========================================
 router.get("/", async (req, res) => {
   try {
@@ -120,8 +116,7 @@ router.get("/:id", async (req, res) => {
 
 router.get("/user/:email", async (req, res) => {
   try {
-    const { email } = req.params;
-    const orders = await CustomerOrder.find({ userEmail: email }).sort({ createdAt: -1 });
+    const orders = await CustomerOrder.find({ userEmail: req.params.email }).sort({ createdAt: -1 });
     res.json({ success: true, data: orders });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -134,20 +129,18 @@ router.get("/user/:email", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const { orderStatus } = req.body;
-    if (!orderStatus) return res.status(400).json({ success: false, message: "orderStatus is required" });
-
     const order = await CustomerOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
     const validStatuses = ["Pending","Received","Processing","Shipped","Delivered","Cancelled"];
-    if (!validStatuses.includes(orderStatus)) return res.status(400).json({ success: false, message: "Invalid status" });
-
-    order.orderStatus = orderStatus;
-    await order.save();
-
-    res.json({ success: true, message: "Order status updated", data: order });
+    if (orderStatus && validStatuses.includes(orderStatus)) {
+      order.orderStatus = orderStatus;
+      await order.save();
+      return res.json({ success: true, message: "Status updated", data: order });
+    }
+    res.status(400).json({ success: false, message: "Invalid status" });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Internal server error" });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
