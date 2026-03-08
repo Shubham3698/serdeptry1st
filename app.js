@@ -29,11 +29,11 @@ mongoose
 // 🔥 CORS Update: Isme apna final frontend URL zaroor dalo
 app.use(cors({
   origin: [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:3000",        // 👈 Ye add karna zaroori hai Admin Panel ke liye
-    "http://localhost:3000",        // 👈 Safety ke liye ye bhi
-    "https://dameeto1st.vercel.app" // Aapka main frontend
+    "http://localhost:5173",           // Local Frontend
+    "http://localhost:5174",           // Alternative Local
+    "https://dameeto1st.vercel.app",   // Main Website
+    "https://admintry-mu.vercel.app",  // 👈 Ye hai aapka Naya Admin Panel Link
+    "http://127.0.0.1:3000"            // Local Admin testing
   ], 
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
   credentials: true,
