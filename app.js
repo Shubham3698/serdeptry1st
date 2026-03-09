@@ -31,10 +31,12 @@ app.use(cors({
   origin: [
     "http://localhost:5173",           // Local Frontend
     "http://localhost:5174",           // Alternative Local
-    "https://dameeto1st.vercel.app",   // Main Website
-    "https://admintry-mu.vercel.app",  // 👈 Ye hai aapka Naya Admin Panel Link
-    "http://127.0.0.1:3000"            // Local Admin testing
-  ], 
+    "http://127.0.0.1:3000",           // Local Admin testing
+    "https://dameeto1st.vercel.app",   // Old Vercel Frontend
+    "https://admintry-mu.vercel.app",  // Admin Panel
+    "https://dameeto.in",              // 👈 New Custom Domain
+    "https://www.dameeto.in"           // 👈 WWW Domain
+  ],
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"]

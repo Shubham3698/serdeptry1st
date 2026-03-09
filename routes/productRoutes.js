@@ -23,13 +23,13 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// Helper function to handle strings coming from FormData
+// Helper function
 const parseField = (field) => {
     if (!field) return [];
-    return typeof field === "string" ? field.split(",").map(s => s.trim()) : field;
+    return typeof field === "string" ? field.split(",").map(s => s.trim()).filter(s => s !== "") : field;
 };
 
-// 🔍 1. SEARCH ROUTE
+// 🔍 1. SEARCH ROUTE (Unchanged)
 router.get("/search", async (req, res) => {
     try {
         const query = req.query.q;
@@ -43,45 +43,51 @@ router.get("/search", async (req, res) => {
             ]
         });
         res.json(results);
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// 🖼️ 2. SINGLE PRODUCT BY ID
+// 🖼️ 2. SINGLE PRODUCT BY ID (Unchanged)
 router.get("/single/:id", async (req, res) => {
     try {
         const product = await Product.findOne({ id: req.params.id }); 
         if (!product) return res.status(404).json({ success: false, message: "Nahi mila!" });
         res.json(product);
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// 📂 3. FETCH ALL BY PAGETYPE
+// 📂 3. FETCH ALL (Unchanged)
 router.get("/:pageType", async (req, res) => {
     try {
         const data = await Product.find({ pageType: req.params.pageType }).sort({ createdAt: -1 });
         res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ➕ 4. ADD DATA (Refined)
-router.post("/add", upload.single("image"), async (req, res) => {
+// ➕ 4. ADD DATA (Refined for Multi-Image)
+router.post("/add", upload.fields([
+    { name: "image", maxCount: 1 }, 
+    { name: "subImages", maxCount: 10 }
+]), async (req, res) => {
     try {
         let productData = { ...req.body };
 
-        // 🔥 Cloudinary logic
-        if (req.file) {
-            productData.src = req.file.path; // Cloudinary URL becomes the main src
+        // 🔥 Main Image from File
+        if (req.files && req.files["image"]) {
+            productData.src = req.files["image"][0].path;
         }
 
-        // Parse Arrays (FormData sends them as strings)
+        // 🔥 Gallery Images from Files
+        let galleryPaths = [];
+        if (req.files && req.files["subImages"]) {
+            galleryPaths = req.files["subImages"].map(file => file.path);
+        }
+
+        // Agar file nahi hai to manual URLs parse karo
         productData.tags = parseField(req.body.tags);
-        productData.subImages = parseField(req.body.subImages);
+        
+        // Combine file paths and existing manual subImages URLs
+        const manualSubImages = parseField(req.body.subImages);
+        productData.subImages = [...galleryPaths, ...manualSubImages];
 
         const cleanPageType = productData.pageType ? productData.pageType.trim() : "stickerData";
         const prefix = cleanPageType.substring(0, 2).toLowerCase();
@@ -100,16 +106,26 @@ router.post("/add", upload.single("image"), async (req, res) => {
 });
 
 // 🛠️ 5. UPDATE DATA (Refined)
-router.put("/update/:id", upload.single("image"), async (req, res) => {
+router.put("/update/:id", upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "subImages", maxCount: 10 }
+]), async (req, res) => {
     try {
         let updateData = { ...req.body };
 
-        if (req.file) {
-            updateData.src = req.file.path;
+        if (req.files && req.files["image"]) {
+            updateData.src = req.files["image"][0].path;
         }
 
-        if (req.body.tags) updateData.tags = parseField(req.body.tags);
-        if (req.body.subImages) updateData.subImages = parseField(req.body.subImages);
+        if (req.files && req.files["subImages"]) {
+            const newGallery = req.files["subImages"].map(file => file.path);
+            const oldGallery = parseField(req.body.subImages);
+            updateData.subImages = [...newGallery, ...oldGallery];
+        } else {
+            updateData.subImages = parseField(req.body.subImages);
+        }
+
+        updateData.tags = parseField(req.body.tags);
 
         const updated = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
         if (!updated) return res.status(404).json({ success: false, message: "Nahi mila!" });
@@ -119,14 +135,12 @@ router.put("/update/:id", upload.single("image"), async (req, res) => {
     }
 });
 
-// 🗑️ 6. DELETE DATA
+// 🗑️ 6. DELETE DATA (Unchanged)
 router.delete("/delete/:id", async (req, res) => {
     try {
-        const deleted = await Product.findByIdAndDelete(req.params.id);
+        await Product.findByIdAndDelete(req.params.id);
         res.json({ success: true, message: "Deleted!" });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 module.exports = router;
