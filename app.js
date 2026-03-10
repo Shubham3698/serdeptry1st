@@ -57,6 +57,7 @@ const ordersRouter = require("./routes/orders");
 const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const productRoutes = require("./routes/productRoutes"); 
 const paymentRoutes = require("./routes/paymentRoutes");
+const gameRoutes = require("./routes/gameRoutes")
 
 // =====================
 // Routes Use
@@ -67,6 +68,7 @@ app.use("/orders", ordersRouter);
 app.use("/api/customer-orders", customerOrderRoutes); 
 app.use("/api/payment", paymentRoutes);      
 app.use("/api/products", productRoutes); 
+app.use("/api", gameRoutes)
 
 // =====================
 // Test Route (Deployment Check)
