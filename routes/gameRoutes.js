@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const User = require("../models/User"); // Path sahi check kar lena
+const User = require("../models/user"); // Path sahi check kar lena
 
 // 🪙 1. Get User Credits
 router.get("/user-credits/:email", async (req, res) => {
