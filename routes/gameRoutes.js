@@ -84,6 +84,17 @@ router.delete("/delete-sticker/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ success: false }); }
 });
 
+// Poora Group (Category) delete karne ke liye
+router.delete("/delete-group/:category", async (req, res) => {
+  try {
+    const { category } = req.params;
+    await Sticker.deleteMany({ category: category.toUpperCase() });
+    res.json({ success: true, message: `Group ${category} deleted!` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Specific Group ki saari images lane ke liye
 router.get("/group-details/:category", async (req, res) => {
   try {
