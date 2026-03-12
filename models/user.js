@@ -6,7 +6,11 @@ const userSchema = new mongoose.Schema({
   phone: { type: String, unique: true, sparse: true },
   password: { type: String, required: true },
   
-  // 🔥 Naya Addition: Credits system
+  // 🔥 Firebase Integration ke liye
+  firebaseUid: { type: String, unique: true, sparse: true },
+  isVerified: { type: Boolean, default: false }, // Email verification status
+
+  // 🔥 Credits system
   credits: { type: Number, default: 0 },
   
   createdAt: { type: Date, default: Date.now }
