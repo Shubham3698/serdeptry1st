@@ -1,52 +1,54 @@
 const express = require("express");
 const router = express.Router();
-const FreeGift = require("../models/FreeGift"); // Model ensure kar lena
+const FreeGift = require("../models/FreeGift");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-// Cloudinary Config (Environment variables use karega jo pehle se set hain)
+// =====================
+// Cloudinary Configuration
+// =====================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Gift images ke liye alag folder
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: "dameeto_gifts", // Cloudinary mein naya folder ban jayega
+    folder: "dameeto_gifts",
     allowed_formats: ["jpg", "png", "jpeg", "webp"],
   },
 });
 
 const upload = multer({ storage: storage });
 
-// --- GIFT ADMIN ROUTES ---
+// =====================
+// Routes
+// =====================
 
-// 1. Upload New Gift
+// 1. UPLOAD NEW GIFT
 router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     const { title, description } = req.body;
-    if (!req.file) return res.status(400).json({ success: false, message: "No image uploaded" });
+    if (!req.file) return res.status(400).json({ success: false, message: "Image is required" });
 
     const newGift = new FreeGift({
       title,
       description,
-      src: req.file.path, // Cloudinary URL yahan se milega
+      src: req.file.path, // Cloudinary URL
       price: 0
     });
 
     await newGift.save();
     res.json({ success: true, gift: newGift });
   } catch (err) {
-    console.error("Upload Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 2. Get All Gifts (For Carousel)
+// 2. GET ALL GIFTS
 router.get("/get-all", async (req, res) => {
   try {
     const gifts = await FreeGift.find().sort({ createdAt: -1 });
@@ -56,11 +58,41 @@ router.get("/get-all", async (req, res) => {
   }
 });
 
-// 3. Delete Specific Gift
+// 3. EDIT GIFT (Title, Description + Optional Image)
+router.put("/edit/:id", upload.single("image"), async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    let updateData = { title, description };
+
+    // Agar nayi image upload hui hai toh uska path set karein
+    if (req.file) {
+      updateData.src = req.file.path;
+    }
+
+    const updatedGift = await FreeGift.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedGift) {
+      return res.status(404).json({ success: false, message: "Gift not found" });
+    }
+
+    res.json({ success: true, gift: updatedGift });
+  } catch (err) {
+    console.error("Edit Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. DELETE SPECIFIC GIFT
 router.delete("/delete/:id", async (req, res) => {
   try {
-    await FreeGift.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Gift deleted successfully" });
+    const deletedGift = await FreeGift.findByIdAndDelete(req.params.id);
+    if (!deletedGift) return res.status(404).json({ success: false, message: "Gift not found" });
+    
+    res.json({ success: true, message: "Gift deleted successfully 🗑️" });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
