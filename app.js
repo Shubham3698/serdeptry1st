@@ -26,7 +26,6 @@ mongoose
 // Middlewares
 // =====================
 
-// 🔥 CORS Update: Isme apna final frontend URL zaroor dalo
 app.use(cors({
   origin: [
     "http://localhost:5173",           // Local Frontend
@@ -34,8 +33,8 @@ app.use(cors({
     "http://127.0.0.1:3000",           // Local Admin testing
     "https://dameeto1st.vercel.app",   // Old Vercel Frontend
     "https://admintry-mu.vercel.app",  // Admin Panel
-    "https://dameeto.in",              // 👈 New Custom Domain
-    "https://www.dameeto.in"           // 👈 WWW Domain
+    "https://dameeto.in",              // New Custom Domain
+    "https://www.dameeto.in"           // WWW Domain
   ],
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
   credentials: true,
@@ -43,8 +42,11 @@ app.use(cors({
 }));
 
 app.use(logger("dev"));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// 🔥 FIX: 413 Error ke liye limit badhayi (Tera original express.json replace kiya)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: false }));
+
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -57,7 +59,8 @@ const ordersRouter = require("./routes/orders");
 const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const productRoutes = require("./routes/productRoutes"); 
 const paymentRoutes = require("./routes/paymentRoutes");
-const gameRoutes = require("./routes/gameRoutes")
+const gameRoutes = require("./routes/gameRoutes");
+const freeGiftRoutes = require("./routes/freeGiftRoutes"); // ✅ Added
 
 // =====================
 // Routes Use
@@ -68,7 +71,8 @@ app.use("/orders", ordersRouter);
 app.use("/api/customer-orders", customerOrderRoutes); 
 app.use("/api/payment", paymentRoutes);      
 app.use("/api/products", productRoutes); 
-app.use("/api", gameRoutes)
+app.use("/api", gameRoutes);
+app.use("/api/free-gifts", freeGiftRoutes); // ✅ Added
 
 // =====================
 // Test Route (Deployment Check)
