@@ -22,15 +22,45 @@ router.post("/create", async (req, res) => {
       shortOrderId, // 🔥 Frontend se aayi hui ID
       razorpay_order_id,
       razorpay_payment_id,
-      razorpay_signature
+      razorpay_signature,
+      paymentMethod // 🔥 Frontend se ye nayi field aayegi
     } = req.body;
 
     // A. Validation
-    if (!userName || !userEmail || !shortOrderId || !razorpay_payment_id) {
+    if (!userName || !userEmail || !shortOrderId) {
       return res.status(400).json({ success: false, message: "Missing required order or payment data" });
     }
 
-    // B. Signature Verification
+    // 🔥 NEW LOGIC: Agar Payment Method "Link Share" hai toh verification skip karo
+    if (paymentMethod === "Link Share") {
+      const order = new CustomerOrder({
+        userName,
+        userEmail,
+        address, 
+        products,
+        subtotal,
+        discount,
+        total,
+        message,
+        shortOrderId,
+        paymentStatus: "Unpaid", // Link share par status Unpaid rahega
+        orderStatus: "Received",
+        razorpayOrderId: razorpay_order_id || ""
+      });
+
+      await order.save();
+      return res.status(201).json({
+        success: true,
+        message: "Link Order Created (Unpaid)",
+        data: order,
+      });
+    }
+
+    // B. Signature Verification (Sirf Direct Pay ke liye)
+    if (!razorpay_payment_id) {
+        return res.status(400).json({ success: false, message: "Missing payment ID" });
+    }
+
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
