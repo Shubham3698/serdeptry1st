@@ -40,7 +40,45 @@ router.post("/create-order", async (req, res) => {
 });
 
 // ==========================================
-// 2. VERIFY PAYMENT API (Basic Verification)
+// 🔥 2. CREATE PAYMENT LINK API (Added for Sharing)
+// ==========================================
+router.post("/create-link", async (req, res) => {
+  try {
+    const { amount, orderId } = req.body;
+
+    if (!amount || !orderId) {
+      return res.status(400).json({ success: false, message: "Amount and OrderId are required" });
+    }
+
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: Math.round(Number(amount) * 100),
+      currency: "INR",
+      accept_partial: false,
+      description: `Payment for Order #${orderId}`,
+      customer: {
+        name: "Customer",
+        email: "customer@example.com",
+        contact: ""
+      },
+      notify: { sms: false, email: false },
+      reminder_enable: true,
+      notes: { short_order_id: orderId },
+      callback_url: "https://serdeptry1st.onrender.com/payment-success",
+      callback_method: "get"
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      short_url: paymentLink.short_url 
+    });
+  } catch (error) {
+    console.error("Razorpay Create Link Error:", error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// 3. VERIFY PAYMENT API (Basic Verification)
 // Note: Isse sirf verification confirm hogi. 
 // DB update karne ke liye humne customerOrderRoutes mein logic daal diya hai.
 // ==========================================
@@ -67,6 +105,40 @@ router.post("/verify-payment", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ success: false, message: "Verification process failed" });
+  }
+});
+
+
+// 🔥 3. WEBHOOK API (Automatic Order Confirmation)
+router.post("/webhook", async (req, res) => {
+  const secret = "DAMEETO_WEBHOOK_SECRET"; // Ye koi bhi random string rakh lo
+
+  const signature = req.headers["x-razorpay-signature"];
+
+  // Verification logic
+  const shasum = crypto.createHmac("sha256", secret);
+  shasum.update(JSON.stringify(req.body));
+  const digest = shasum.digest("hex");
+
+  if (signature === digest) {
+    console.log("Webhook Verified!");
+    const event = req.body.event;
+
+    // Jab payment success ho jaye
+    if (event === "payment_link.paid" || event === "order.paid") {
+      const paymentDetails = req.body.payload.payment.entity;
+      const orderId = req.body.payload.payment_link ? 
+                      req.body.payload.payment_link.entity.notes.short_order_id : 
+                      paymentDetails.notes.order_id;
+
+      console.log(`Payment Success for Order: ${orderId}`);
+      
+      // ✅ YAHAN APNA DB UPDATE LOGIC DALEIN
+      // Example: await Order.findOneAndUpdate({ orderId }, { status: "Paid" });
+    }
+    res.status(200).json({ status: "ok" });
+  } else {
+    res.status(400).send("Invalid Signature");
   }
 });
 
