@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
+const CustomerOrder = require("../models/CustomerOrder"); // 🔥 Import Model
 
 // Razorpay instance initialization
 const razorpay = new Razorpay({
@@ -62,7 +63,7 @@ router.post("/create-link", async (req, res) => {
       },
       notify: { sms: false, email: false },
       reminder_enable: true,
-      notes: { short_order_id: orderId },
+      notes: { short_order_id: orderId }, // 🔥 Notes mein ID save ki hai
       callback_url: "https://serdeptry1st.onrender.com/payment-success",
       callback_method: "get"
     });
@@ -111,7 +112,7 @@ router.post("/verify-payment", async (req, res) => {
 
 // 🔥 3. WEBHOOK API (Automatic Order Confirmation)
 router.post("/webhook", async (req, res) => {
-  const secret = "DAMEETO_WEBHOOK_SECRET"; // Ye koi bhi random string rakh lo
+  const secret = "DAMEETO_WEBHOOK_SECRET"; // Razorpay Dashboard mein wahi rakhein
 
   const signature = req.headers["x-razorpay-signature"];
 
@@ -121,23 +122,43 @@ router.post("/webhook", async (req, res) => {
   const digest = shasum.digest("hex");
 
   if (signature === digest) {
-    console.log("Webhook Verified!");
+    console.log("✅ Webhook Verified!");
     const event = req.body.event;
 
     // Jab payment success ho jaye
     if (event === "payment_link.paid" || event === "order.paid") {
-      const paymentDetails = req.body.payload.payment.entity;
-      const orderId = req.body.payload.payment_link ? 
-                      req.body.payload.payment_link.entity.notes.short_order_id : 
-                      paymentDetails.notes.order_id;
+      const payload = req.body.payload;
+      const paymentEntity = payload.payment.entity;
 
-      console.log(`Payment Success for Order: ${orderId}`);
+      // Extract Order ID from notes (Link share ya direct order dono handle honge)
+      const orderId = payload.payment_link ? 
+                      payload.payment_link.entity.notes.short_order_id : 
+                      paymentEntity.notes.short_order_id;
+
+      const razorpayPaymentId = paymentEntity.id;
+
+      console.log(`🚀 Payment Success for Order: ${orderId}`);
       
-      // ✅ YAHAN APNA DB UPDATE LOGIC DALEIN
-      // Example: await Order.findOneAndUpdate({ orderId }, { status: "Paid" });
+      try {
+        // ✅ DB UPDATE LOGIC: "Unpaid" ko "Paid" karo
+        if (orderId) {
+          await CustomerOrder.findOneAndUpdate(
+            { shortOrderId: orderId }, 
+            { 
+              paymentStatus: "Paid", 
+              razorpayPaymentId: razorpayPaymentId 
+            }
+          );
+          console.log(`✅ Order ${orderId} marked as PAID in Atlas!`);
+        }
+      } catch (dbErr) {
+        console.error("❌ DB Update Error in Webhook:", dbErr.message);
+      }
     }
+    // Razorpay ko hamesha 200 response dena zaroori hai
     res.status(200).json({ status: "ok" });
   } else {
+    console.error("❌ Invalid Webhook Signature");
     res.status(400).send("Invalid Signature");
   }
 });
