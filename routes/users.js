@@ -36,13 +36,19 @@ router.post("/signup", async (req, res) => {
 });
 
 // ===================
-// LOGIN (Updated)
+// LOGIN (Updated to sync isVerified)
 // ===================
 router.post("/login", async (req, res) => {
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ email });
+    // 🔥 Update: Find user and mark as verified since they passed Firebase check
+    const user = await User.findOneAndUpdate(
+      { email },
+      { isVerified: true },
+      { new: true }
+    );
+
     if (!user)
       return res.status(400).json({ message: "User not found in database" });
 
@@ -50,10 +56,12 @@ router.post("/login", async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       email: user.email,
-      name: user.name
+      name: user.name,
+      isVerified: user.isVerified
     });
 
   } catch (err) {
+    console.error("Login Error:", err);
     res.status(500).json({ message: "Server error during login" });
   }
 });
