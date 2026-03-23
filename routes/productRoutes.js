@@ -26,7 +26,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// 🔥 AI BACKGROUND REMOVAL FUNCTION (SECURED WITH ENV)
+// 🔥 AI BACKGROUND REMOVAL FUNCTION
 const removeBackgroundAI = async (imageUrl) => {
   try {
     const response = await axios({
@@ -37,13 +37,11 @@ const removeBackgroundAI = async (imageUrl) => {
         size: "auto",
       },
       headers: {
-        // 🔥 API Key ab environment variable se aa rahi hai
         "X-Api-Key": process.env.REMOVE_BG_API_KEY, 
       },
       responseType: "arraybuffer",
     });
 
-    // Cleaned Image ko Cloudinary par wapas upload karna (PNG format mein)
     return new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
         { folder: "dameeto_products", format: "png" },
@@ -55,7 +53,7 @@ const removeBackgroundAI = async (imageUrl) => {
     });
   } catch (err) {
     console.error("❌ AI Error:", err.response ? err.response.data.toString() : err.message);
-    return imageUrl; // Error aaye toh original image ka link hi bhej do
+    return imageUrl; 
   }
 };
 
@@ -64,7 +62,35 @@ const parseField = (field) => {
     return typeof field === "string" ? field.split(",").map(s => s.trim()).filter(s => s !== "") : field;
 };
 
-// ➕ 1. ADD DATA (Updated with AI logic)
+// --- ROUTES START ---
+
+// 🔍 1. SEARCH PRODUCTS (Order: Sabse Upar)
+// Isse upar rakhna zaroori hai taaki /:pageType isse intercept na kare
+router.get("/search", async (req, res) => {
+    try {
+        const query = req.query.q;
+        if (!query) return res.json([]);
+
+        const searchRegex = new RegExp(query, "i");
+
+        const products = await Product.find({
+            $or: [
+                { title: searchRegex },
+                { tags: { $regex: query, $options: "i" } }, // 🔥 Array ke har element mein search
+                { tag: searchRegex },
+                { pageType: searchRegex }
+            ]
+        }).sort({ createdAt: -1 });
+
+        console.log(`🔎 DB Search: "${query}" found ${products.length} items.`);
+        res.json(products);
+    } catch (err) {
+        console.error("❌ Search Error:", err);
+        res.status(500).json({ success: false, message: "Search failed server side" });
+    }
+});
+
+// ➕ 2. ADD DATA
 router.post("/add", upload.fields([
     { name: "image", maxCount: 1 }, 
     { name: "subImages", maxCount: 10 }
@@ -72,19 +98,14 @@ router.post("/add", upload.fields([
     try {
         let productData = { ...req.body };
 
-        // Main Image Handling
         if (req.files && req.files["image"]) {
             let uploadedUrl = req.files["image"][0].path;
-
-            // Check if Background Removal is needed
             if (req.body.removeBg === "true") {
-                console.log("🚀 AI is cleaning background in backend...");
                 uploadedUrl = await removeBackgroundAI(uploadedUrl);
             }
             productData.src = uploadedUrl;
         }
 
-        // Gallery Images Handling
         let galleryPaths = [];
         if (req.files && req.files["subImages"]) {
             galleryPaths = req.files["subImages"].map(file => file.path);
@@ -95,12 +116,11 @@ router.post("/add", upload.fields([
         productData.subImages = [...galleryPaths, ...manualSubImages];
 
         const cleanPageType = productData.pageType ? productData.pageType.trim() : "stickerData";
-        const prefix = cleanPageType.substring(0, 2).toLowerCase();
         
         const newProduct = new Product({
             ...productData,
             pageType: cleanPageType,
-            id: `${prefix}-${Date.now()}`,
+            id: `${cleanPageType.substring(0, 2).toLowerCase()}-${Date.now()}`,
             removeBg: req.body.removeBg === "true"
         });
 
@@ -111,7 +131,7 @@ router.post("/add", upload.fields([
     }
 });
 
-// 🛠️ 2. UPDATE DATA (Updated with AI logic)
+// 🛠️ 3. UPDATE DATA
 router.put("/update/:id", upload.fields([
     { name: "image", maxCount: 1 },
     { name: "subImages", maxCount: 10 }
@@ -146,7 +166,16 @@ router.put("/update/:id", upload.fields([
     }
 });
 
-// 📂 3. FETCH ALL
+// 🖼️ 4. SINGLE PRODUCT BY ID (Order: Isse category route se upar rakhein)
+router.get("/single/:id", async (req, res) => {
+    try {
+        const product = await Product.findOne({ id: req.params.id }); 
+        if (!product) return res.status(404).json({ success: false, message: "Nahi mila!" });
+        res.json(product);
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// 📂 5. FETCH BY PAGETYPE (Order: Niche)
 router.get("/:pageType", async (req, res) => {
     try {
         const data = await Product.find({ pageType: req.params.pageType }).sort({ createdAt: -1 });
@@ -154,20 +183,11 @@ router.get("/:pageType", async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// 🗑️ 4. DELETE DATA
+// 🗑️ 6. DELETE DATA
 router.delete("/delete/:id", async (req, res) => {
     try {
         await Product.findByIdAndDelete(req.params.id);
         res.json({ success: true, message: "Deleted!" });
-    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-});
-
-// 🖼️ 5. SINGLE PRODUCT BY ID
-router.get("/single/:id", async (req, res) => {
-    try {
-        const product = await Product.findOne({ id: req.params.id }); 
-        if (!product) return res.status(404).json({ success: false, message: "Nahi mila!" });
-        res.json(product);
     } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
