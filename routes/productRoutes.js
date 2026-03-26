@@ -98,25 +98,39 @@ router.post("/add", upload.fields([
     try {
         let productData = { ...req.body };
 
+        // 🔥 1. IMAGE HANDLING (UPDATED)
         if (req.files && req.files["image"]) {
+            // ✅ Normal upload (existing)
             let uploadedUrl = req.files["image"][0].path;
+
             if (req.body.removeBg === "true") {
                 uploadedUrl = await removeBackgroundAI(uploadedUrl);
             }
+
             productData.src = uploadedUrl;
+
+        } else if (req.body.src) {
+            // ✅ NEW: Pinterest / external image URL support
+            productData.src = req.body.src;
         }
 
+        // 🔥 2. SUB IMAGES (same as before)
         let galleryPaths = [];
         if (req.files && req.files["subImages"]) {
             galleryPaths = req.files["subImages"].map(file => file.path);
         }
 
         productData.tags = parseField(req.body.tags);
+
         const manualSubImages = parseField(req.body.subImages);
         productData.subImages = [...galleryPaths, ...manualSubImages];
 
-        const cleanPageType = productData.pageType ? productData.pageType.trim() : "stickerData";
-        
+        // 🔥 3. PAGETYPE FIX (same)
+        const cleanPageType = productData.pageType 
+            ? productData.pageType.trim() 
+            : "stickerData";
+
+        // 🔥 4. CREATE PRODUCT (same)
         const newProduct = new Product({
             ...productData,
             pageType: cleanPageType,
@@ -125,9 +139,19 @@ router.post("/add", upload.fields([
         });
 
         await newProduct.save();
-        res.status(201).json({ success: true, message: "Product Added!", data: newProduct });
+
+        res.status(201).json({
+            success: true,
+            message: "Product Added!",
+            data: newProduct
+        });
+
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        console.error("❌ ADD ERROR:", err);
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 
