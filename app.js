@@ -25,17 +25,36 @@ mongoose
 // =====================
 // Middlewares
 // =====================
-
 app.use(cors({
-  origin: [
-    "http://localhost:5173",           // Local Frontend
-    "http://localhost:5174",           // Alternative Local
-    "http://127.0.0.1:3000",           // Local Admin testing
-    "https://dameeto1st.vercel.app",   // Old Vercel Frontend
-    "https://admintry-mu.vercel.app",  // Admin Panel
-    "https://dameeto.in",              // New Custom Domain
-    "https://www.dameeto.in"           // WWW Domain
-  ],
+  origin: function (origin, callback) {
+
+    const allowedOrigins = [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://127.0.0.1:3000",
+      "https://dameeto1st.vercel.app",
+      "https://admintry-mu.vercel.app",
+      "https://dameeto.in",
+      "https://www.dameeto.in"
+    ];
+
+    // ✅ allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) return callback(null, true);
+
+    // ✅ allow chrome extensions
+    if (origin.startsWith("chrome-extension://")) {
+      return callback(null, true);
+    }
+
+    // ✅ allow whitelisted domains
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // ❌ block everything else
+    return callback(new Error("Not allowed by CORS"));
+  },
+
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"]
