@@ -91,58 +91,89 @@ router.get("/search", async (req, res) => {
 });
 
 // ➕ 2. ADD DATA
-router.post("/add", upload.fields([
-    { name: "image", maxCount: 1 }, 
-    { name: "subImages", maxCount: 10 }
-]), async (req, res) => {
+// ➕ 2. ADD DATA (Admin Panel + Extension Friendly)
+router.post("/add", (req, res, next) => {
+    // 🔥 Check: Agar Extension se JSON data aa raha hai, toh multer skip karo
+    if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
+        return next(); 
+    }
+    // Agar normal file upload hai (React Admin Panel se), toh multer chalne do
+    upload.fields([
+        { name: "image", maxCount: 1 }, 
+        { name: "subImages", maxCount: 10 }
+    ])(req, res, next);
+}, async (req, res) => {
     try {
         let productData = { ...req.body };
 
         // 🔥 1. IMAGE HANDLING (UPDATED)
         if (req.files && req.files["image"]) {
-            // ✅ Normal upload (existing)
+            // ✅ Normal upload (React Admin Panel)
             let uploadedUrl = req.files["image"][0].path;
 
-            if (req.body.removeBg === "true") {
+            // Background Removal check (Boolean or String handle)
+            if (req.body.removeBg === "true" || req.body.removeBg === true) {
                 uploadedUrl = await removeBackgroundAI(uploadedUrl);
             }
-
             productData.src = uploadedUrl;
 
         } else if (req.body.src) {
-            // ✅ NEW: Pinterest / external image URL support
-            productData.src = req.body.src;
+            // ✅ Extension support (Pinterest URL or Base64)
+            let finalUrl = req.body.src;
+
+            // Agar extension ne removeBg tick kiya hai
+            if (req.body.removeBg === "true" || req.body.removeBg === true) {
+                // Agar URL hai toh AI se clean karwao, agar base64 hai toh sidha upload
+                if (!finalUrl.startsWith('data:image')) {
+                    finalUrl = await removeBackgroundAI(finalUrl);
+                } else {
+                    // Base64 data ko Cloudinary pe upload karo
+                    const uploadRes = await cloudinary.uploader.upload(finalUrl, {
+                        folder: "dameeto_products"
+                    });
+                    finalUrl = uploadRes.secure_url;
+                }
+            } else if (!finalUrl.startsWith('https://res.cloudinary.com')) {
+                // Agar removeBg nahi hai par Pinterest URL hai, toh Cloudinary pe backup le lo
+                const uploadRes = await cloudinary.uploader.upload(finalUrl, {
+                    folder: "dameeto_products"
+                });
+                finalUrl = uploadRes.secure_url;
+            }
+            
+            productData.src = finalUrl;
         }
 
-        // 🔥 2. SUB IMAGES (same as before)
+        // 🔥 2. SUB IMAGES
         let galleryPaths = [];
         if (req.files && req.files["subImages"]) {
             galleryPaths = req.files["subImages"].map(file => file.path);
         }
 
         productData.tags = parseField(req.body.tags);
-
         const manualSubImages = parseField(req.body.subImages);
         productData.subImages = [...galleryPaths, ...manualSubImages];
 
-        // 🔥 3. PAGETYPE FIX (same)
+        // 🔥 3. PAGETYPE FIX
         const cleanPageType = productData.pageType 
             ? productData.pageType.trim() 
             : "stickerData";
 
-        // 🔥 4. CREATE PRODUCT (same)
+        // 🔥 4. CREATE PRODUCT
         const newProduct = new Product({
             ...productData,
             pageType: cleanPageType,
+            // ID generation logic intact
             id: `${cleanPageType.substring(0, 2).toLowerCase()}-${Date.now()}`,
-            removeBg: req.body.removeBg === "true"
+            // Boolean normalize karo
+            removeBg: req.body.removeBg === "true" || req.body.removeBg === true
         });
 
         await newProduct.save();
 
         res.status(201).json({
             success: true,
-            message: "Product Added!",
+            message: "Product Added Successfully! 🚀",
             data: newProduct
         });
 
