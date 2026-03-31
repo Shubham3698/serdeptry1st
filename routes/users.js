@@ -2,22 +2,35 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/user");
 
-// ===================
-// SIGNUP (Updated for Firebase Sync)
-// ===================
+// ==========================================
+// SIGNUP / SYNC (Email, Google & Phone)
+// ==========================================
 router.post("/signup", async (req, res) => {
   try {
-    const { name, email, password, firebaseUid } = req.body; // firebaseUid frontend se aayega
+    const { name, email, password, firebaseUid } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ message: "Email already registered" });
+    // 🔥 FIX: Find user if already exists (Google/Phone login handle karne ke liye)
+    let user = await User.findOne({ email });
 
-    // firebaseUid ko save karna zaroori hai sync ke liye
+    if (user) {
+      // Agar user mil gaya, toh data sync kar do (Error nahi bhejenge)
+      user.firebaseUid = firebaseUid;
+      if (name) user.name = name; 
+      // Note: isVerified ko yahan update nahi kar rahe kyunki wo login par hoga
+      await user.save();
+      
+      return res.status(200).json({
+        message: "User synced successfully",
+        email: user.email,
+        name: user.name
+      });
+    }
+
+    // Naya user banao agar DB mein nahi hai
     const newUser = new User({ 
-      name, 
+      name: name || "User", 
       email, 
-      password, // Note: Ideally, password backend pe save nahi karte agar Firebase use kar rahe ho, par tumhare structure ke liye rehne diya hai
+      password: password || "social_auth_no_password", 
       firebaseUid 
     });
     
@@ -35,14 +48,15 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// ===================
-// LOGIN (Updated to sync isVerified)
-// ===================
+// ==========================================
+// LOGIN (Sync isVerified for all methods)
+// ==========================================
 router.post("/login", async (req, res) => {
   try {
     const { email } = req.body;
 
     // 🔥 Update: Find user and mark as verified since they passed Firebase check
+    // Ye Google, Phone aur Email teeno ke liye kaam karega
     const user = await User.findOneAndUpdate(
       { email },
       { isVerified: true },
@@ -50,9 +64,8 @@ router.post("/login", async (req, res) => {
     );
 
     if (!user)
-      return res.status(400).json({ message: "User not found in database" });
+      return res.status(404).json({ message: "User not found in database" });
 
-    // Frontend pe Firebase verify kar lega password, yahan se sirf user data bhej rahe hain
     res.status(200).json({
       message: "Login successful",
       email: user.email,
