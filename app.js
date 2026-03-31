@@ -35,6 +35,7 @@ app.use(cors({
       "https://dameeto1st.vercel.app",
       "https://admintry-mu.vercel.app",
       "https://dameeto.in",
+      "https://serdeptry1st.onrender.com",
       "https://www.dameeto.in"
     ];
 
