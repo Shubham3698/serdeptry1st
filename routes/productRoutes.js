@@ -64,6 +64,60 @@ const parseField = (field) => {
 
 // --- ROUTES START ---
 
+// 🔥 2. DYNAMIC WISHLIST TOGGLE (DB mein product ho ya na ho, dono handle karega)
+router.post("/action/wishlist/:productId", async (req, res) => {
+    try {
+        const { productId } = req.params;
+        const { email } = req.body;
+
+        if (!email) return res.status(401).json({ success: false, message: "Login required!" });
+
+        const User = require("../models/user"); // Check path: User.js ya user.js
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        // 🔍 Product dhoondo, nahi mile toh naya banao (Auto-Create)
+        let product = await Product.findOne({ id: productId });
+
+        if (!product) {
+            console.log("🆕 Missing Product! Dameeto System naya bana raha hai...");
+            product = new Product({
+                id: productId,
+                title: "1st 10 DTF-Sticker Pack", 
+                wishlistCount: 15, // Starting count
+                pageType: "stickerPacks",
+                category: "stickers",
+                src: "https://i.pinimg.com/736x/80/07/d8/8007d8ba979d036cb1a6c18aa701f369.jpg"
+            });
+            await product.save();
+        }
+
+        // 🔄 Toggle Logic
+        const isWishlisted = user.wishlist.includes(product._id);
+
+        if (isWishlisted) {
+            await User.findOneAndUpdate({ email }, { $pull: { wishlist: product._id } });
+            const updatedProduct = await Product.findOneAndUpdate(
+                { id: productId },
+                { $inc: { wishlistCount: -1 }, $pull: { wishlistedBy: email } },
+                { new: true }
+            );
+            return res.json({ success: true, status: "removed", count: updatedProduct.wishlistCount });
+        } else {
+            await User.findOneAndUpdate({ email }, { $push: { wishlist: product._id } });
+            const updatedProduct = await Product.findOneAndUpdate(
+                { id: productId },
+                { $inc: { wishlistCount: 1 }, $push: { wishlistedBy: email } },
+                { new: true }
+            );
+            return res.json({ success: true, status: "added", count: updatedProduct.wishlistCount });
+        }
+    } catch (err) {
+        console.error("❌ Wishlist Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+});
+
 // 🔍 1. SEARCH PRODUCTS (Order: Sabse Upar)
 // Isse upar rakhna zaroori hai taaki /:pageType isse intercept na kare
 router.get("/search", async (req, res) => {

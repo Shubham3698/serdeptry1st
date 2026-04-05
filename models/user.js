@@ -45,7 +45,16 @@ const userSchema = new mongoose.Schema({
     type: Date, 
     default: Date.now 
   }
+  ,wishlist: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Product' 
+  }],
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
+  }
 });
+
 
 // Purane models ke saath conflict na ho isliye ye check zaroori hai
 module.exports = mongoose.models.User || mongoose.model('user', userSchema);

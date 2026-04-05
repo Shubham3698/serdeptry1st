@@ -16,6 +16,20 @@ const ProductSchema = new mongoose.Schema({
     subImages: [String],
     tags: [String],
     badge: String,
+
+    // 🔥 NAYE FIELDS (Dameeto Wishlist Feature ke liye)
+    // Kitne logon ne wishlist kiya uska total number
+    wishlistCount: { 
+        type: Number, 
+        default: 0 
+    },
+    // Kaun-kaun se users ne wishlist kiya (unka email ya ID store karne ke liye)
+    wishlistedBy: [
+        { 
+            type: String // User ka email store karenge yahan
+        }
+    ],
+
 }, { timestamps: true });
 
 // Exports the model
