@@ -28,17 +28,19 @@ const upload = multer({ storage: storage });
 // Routes
 // =====================
 
-// 1. UPLOAD NEW GIFT
+// 1. UPLOAD NEW GIFT (Updated with Threshold)
 router.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    const { title, description } = req.body;
+    // 🔥 Threshold ko body se nikala
+    const { title, description, threshold } = req.body;
     if (!req.file) return res.status(400).json({ success: false, message: "Image is required" });
 
     const newGift = new FreeGift({
       title,
       description,
       src: req.file.path, // Cloudinary URL
-      price: 0
+      price: 0,
+      threshold: threshold ? Number(threshold) : 299 // 🔥 Nayi field save ho rahi hai
     });
 
     await newGift.save();
@@ -48,7 +50,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
   }
 });
 
-// 2. GET ALL GIFTS
+// 2. GET ALL GIFTS (Remains same)
 router.get("/get-all", async (req, res) => {
   try {
     const gifts = await FreeGift.find().sort({ createdAt: -1 });
@@ -58,11 +60,17 @@ router.get("/get-all", async (req, res) => {
   }
 });
 
-// 3. EDIT GIFT (Title, Description + Optional Image)
+// 3. EDIT GIFT (Updated with Threshold + Image support)
 router.put("/edit/:id", upload.single("image"), async (req, res) => {
   try {
-    const { title, description } = req.body;
-    let updateData = { title, description };
+    const { title, description, threshold } = req.body;
+    
+    // 🔥 UpdateData mein threshold add kiya
+    let updateData = { 
+      title, 
+      description, 
+      threshold: threshold ? Number(threshold) : 299 
+    };
 
     // Agar nayi image upload hui hai toh uska path set karein
     if (req.file) {
@@ -86,7 +94,7 @@ router.put("/edit/:id", upload.single("image"), async (req, res) => {
   }
 });
 
-// 4. DELETE SPECIFIC GIFT
+// 4. DELETE SPECIFIC GIFT (Remains same)
 router.delete("/delete/:id", async (req, res) => {
   try {
     const deletedGift = await FreeGift.findByIdAndDelete(req.params.id);
