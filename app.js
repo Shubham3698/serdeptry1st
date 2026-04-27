@@ -82,6 +82,7 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const gameRoutes = require("./routes/gameRoutes");
 const freeGiftRoutes = require("./routes/freeGiftRoutes"); // ✅ Added
 const pincodeRoute = require("./routes/pincode");
+const wishlistRoutes = require("./routes/wishlistRoutes");
 // =====================
 // Routes Use
 // =====================
@@ -94,6 +95,7 @@ app.use("/api/products", productRoutes);
 app.use("/api", gameRoutes);
 app.use("/api/free-gifts", freeGiftRoutes); // ✅ Added
 app.use("/api", pincodeRoute);
+app.use("/api/wishlist", wishlistRoutes);
 
 // =====================
 // Test Route (Deployment Check)
