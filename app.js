@@ -36,7 +36,8 @@ app.use(cors({
       "https://admintry-mu.vercel.app",
       "https://dameeto.in",
       "https://serdeptry1st.onrender.com",
-      "https://www.dameeto.in"
+      "https://www.dameeto.in",
+      "https://english1stcomm.vercel.app"
     ];
 
     // ✅ allow requests with no origin (like mobile apps, curl, postman)
