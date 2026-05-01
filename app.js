@@ -83,6 +83,9 @@ const gameRoutes = require("./routes/gameRoutes");
 const freeGiftRoutes = require("./routes/freeGiftRoutes"); // ✅ Added
 const pincodeRoute = require("./routes/pincode");
 const wishlistRoutes = require("./routes/wishlistRoutes");
+
+const englishUsersRouter = require("./routes/englishUsers");
+const englishPostRoutes = require("./routes/englishPostRoutes");
 // =====================
 // Routes Use
 // =====================
@@ -96,6 +99,11 @@ app.use("/api", gameRoutes);
 app.use("/api/free-gifts", freeGiftRoutes); // ✅ Added
 app.use("/api", pincodeRoute);
 app.use("/api/wishlist", wishlistRoutes);
+
+
+app.use("/api/english-community/users", englishUsersRouter);
+app.use("/api/english-posts", englishPostRoutes);
+
 
 // =====================
 // Test Route (Deployment Check)

@@ -9,9 +9,9 @@ const FormData = require("form-data");
 
 // ☁️ CLOUDINARY CONFIG
 cloudinary.config({
-  cloud_name: "daxs9cdp6", 
-  api_key: "194775248813893",
-  api_secret: "F2bFfBordNerkYgZeN5ds_dwu10",
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 // 📁 MULTER STORAGE
