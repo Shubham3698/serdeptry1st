@@ -6,34 +6,41 @@ const EnglishPostSchema = new mongoose.Schema({
   image: { type: String, required: true },
   userEmail: { type: String, required: true },
   
-  // 🗳️ Votes setup
+  // 🗳️ Votes setup (Instagram Style Like System)
   votedBy: { type: [String], default: [] }, 
   voteCount: { type: Number, default: 0 },
 
-  // 📊 Command Level Numbers
+  // 📊 Command Level Numbers (4 Updated Options)
   commandStats: {
-    neverHeard: { type: Number, default: 0 },
-    heardButNotUsed: { type: Number, default: 0 },
+    easy: { type: Number, default: 0 },
+    hard: { type: Number, default: 0 },
+    heard: { type: Number, default: 0 },
     dailyUse: { type: Number, default: 0 }
   },
 
-  // 🔥 Tracking specific user choices (Radio Logic ke liye zaroori hai)
+  // 🔥 Tracking specific user choices (Radio Logic)
   userStats: [{
     email: { type: String },
-    level: { type: String, enum: ["neverHeard", "heardButNotUsed", "dailyUse"] }
+    level: { 
+      type: String, 
+      enum: ["easy", "hard", "heard", "dailyUse"] // 4 Options Match
+    }
   }],
 
+  // 🏷️ Badge Logic
   badgeName: { 
     type: String, 
     enum: ["Easy", "Normal", "Professional", "Trending", "Popular"], 
     default: "Normal" 
   },
-// 🔥 Ye add karo:
+
+  // 💬 Comment System
   comments: [{
     name: String,
     text: String,
     createdAt: { type: Date, default: Date.now }
   }],
+
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -23,7 +23,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// ✅ 1. CREATE POST
+// ✅ 1. CREATE POST (Updated with 4 Level Defaults)
 router.post("/create", upload.single("image"), async (req, res) => {
   try {
     let imageUrl = req.body.image;
@@ -36,11 +36,12 @@ router.post("/create", upload.single("image"), async (req, res) => {
       image: imageUrl,
       userEmail: req.body.userEmail,
       badgeName: req.body.badgeName || "Normal",
-      // Initialize defaults to avoid null errors later
       votedBy: [],
       voteCount: 0,
-      commandStats: { neverHeard: 0, heardButNotUsed: 0, dailyUse: 0 },
-      userStats: []
+      // 🔥 Updated for 4 levels
+      commandStats: { easy: 0, hard: 0, heard: 0, dailyUse: 0 },
+      userStats: [],
+      comments: []
     });
 
     await newPost.save();
@@ -50,7 +51,7 @@ router.post("/create", upload.single("image"), async (req, res) => {
   }
 });
 
-// ✅ 2. 🗳️ INSTAGRAM STYLE VOTE TOGGLE (Fixed with Safety Checks)
+// ✅ 2. 🗳️ VOTE TOGGLE (No Changes - Safe)
 router.post("/vote/:postId", async (req, res) => {
   try {
     const { email } = req.body;
@@ -59,7 +60,6 @@ router.post("/vote/:postId", async (req, res) => {
     const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // 🔥 CRASH FIX: Ensure votedBy array exists
     if (!post.votedBy) post.votedBy = [];
 
     const voteIndex = post.votedBy.indexOf(email);
@@ -75,12 +75,12 @@ router.post("/vote/:postId", async (req, res) => {
     await post.save();
     res.json({ success: true, voteCount: post.voteCount, votedBy: post.votedBy });
   } catch (err) {
-    console.error("❌ Vote Route Crash:", err); // Backend terminal mein check karo
-    res.status(500).json({ message: "Internal Server Error. Check terminal." });
+    console.error("❌ Vote Route Crash:", err);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-// ✅ 3. 🔥 SMART COMMAND STATS (Fixed with Safety Checks)
+// ✅ 3. 🔥 SMART COMMAND STATS (Fixed for 4 Levels: Easy, Hard, Heard, DailyUse)
 router.post("/update-stat/:postId", async (req, res) => {
   try {
     const { level, email } = req.body;
@@ -88,15 +88,16 @@ router.post("/update-stat/:postId", async (req, res) => {
 
     if (!email) return res.status(400).json({ message: "Email required" });
 
-    const allowedLevels = ['neverHeard', 'heardButNotUsed', 'dailyUse'];
+    // 🔥 Schema ke naye keys se match kar raha hai
+    const allowedLevels = ['easy', 'hard', 'heard', 'dailyUse'];
     if (!allowedLevels.includes(level)) return res.status(400).json({ message: "Invalid level" });
 
     const post = await EnglishPost.findById(postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // 🔥 CRASH FIX: Ensure objects/arrays exist before running logic
-    if (!post.commandStats) {
-      post.commandStats = { neverHeard: 0, heardButNotUsed: 0, dailyUse: 0 };
+    // 🔥 Safety Check: Ensure new object keys exist for old data compatibility
+    if (!post.commandStats || !post.commandStats.easy && post.commandStats.neverHeard !== undefined) {
+      post.commandStats = { easy: 0, hard: 0, heard: 0, dailyUse: 0 };
     }
     if (!post.userStats) {
       post.userStats = [];
@@ -108,14 +109,17 @@ router.post("/update-stat/:postId", async (req, res) => {
       const oldLevel = post.userStats[existingIdx].level;
 
       if (oldLevel === level) {
+        // Toggle off (Undo selection)
         post.commandStats[level] = Math.max(0, (post.commandStats[level] || 0) - 1);
         post.userStats.splice(existingIdx, 1);
       } else {
+        // Switch level logic
         post.commandStats[oldLevel] = Math.max(0, (post.commandStats[oldLevel] || 0) - 1);
         post.commandStats[level] = (post.commandStats[level] || 0) + 1;
         post.userStats[existingIdx].level = level;
       }
     } else {
+      // First time selection
       post.commandStats[level] = (post.commandStats[level] || 0) + 1;
       post.userStats.push({ email, level });
     }
@@ -153,7 +157,7 @@ router.get("/my-posts", async (req, res) => {
   }
 });
 
-// ✅ ADD COMMENT
+// ✅ 6. ADD COMMENT (Already Bulletproof)
 router.post("/comment/:postId", async (req, res) => {
   try {
     const { postId } = req.params;
