@@ -5,7 +5,7 @@ const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-// ☁️ CLOUDINARY CONFIG
+// ☁️ CLOUDINARY CONFIGURATION
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -16,32 +16,52 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "english_community_posts",
-    allowed_formats: ["jpg", "png", "jpeg", "webp"],
-    resource_type: "auto",
+    allowed_formats: ["jpg", "png", "jpeg", "webp", "mp4", "mov"], // Added video formats
+    resource_type: "auto", // Essential for Video + Image support
   },
 });
 
 const upload = multer({ storage: storage });
 
-// ✅ 1. CREATE POST (Updated with 4 Level Defaults)
-router.post("/create", upload.single("image"), async (req, res) => {
+// ✅ 1. CREATE MULTI-MEDIA POST
+// Optimized to handle a sequence of Images, Videos, and YouTube Embeds
+router.post("/create", upload.array("images", 10), async (req, res) => {
   try {
-    let imageUrl = req.body.image;
-    if (req.file) { imageUrl = req.file.path; }
-    if (!imageUrl) return res.status(400).json({ success: false, message: "Image is required" });
+    const { word, meaning, userEmail, mediaMetadata } = req.body;
+    const metadata = JSON.parse(mediaMetadata || "[]");
+    const files = req.files || [];
+
+    let finalMedia = [];
+    let fileIndex = 0;
+
+    // Merge uploaded files and links based on the sequence from frontend
+    metadata.forEach((item) => {
+      if (item.mode === "file") {
+        if (files[fileIndex]) {
+          finalMedia.push({ type: item.type, url: files[fileIndex].path });
+          fileIndex++;
+        }
+      } else {
+        finalMedia.push({ type: item.type, url: item.url });
+      }
+    });
+
+    // Fallback: If no metadata but single image exists (Old app compatibility)
+    if (finalMedia.length === 0 && (req.body.image || files[0])) {
+      finalMedia.push({ 
+        type: "image", 
+        url: files[0] ? files[0].path : req.body.image 
+      });
+    }
 
     const newPost = new EnglishPost({
-      word: req.body.word,
-      meaning: req.body.meaning,
-      image: imageUrl,
-      userEmail: req.body.userEmail,
+      word,
+      meaning,
+      userEmail,
+      media: finalMedia, // Saving the full sequence
+      image: finalMedia[0]?.url || "", // Keeping for backward compatibility
       badgeName: req.body.badgeName || "Normal",
-      votedBy: [],
-      voteCount: 0,
-      // 🔥 Updated for 4 levels
       commandStats: { easy: 0, hard: 0, heard: 0, dailyUse: 0 },
-      userStats: [],
-      comments: []
     });
 
     await newPost.save();
@@ -51,19 +71,54 @@ router.post("/create", upload.single("image"), async (req, res) => {
   }
 });
 
-// ✅ 2. 🗳️ VOTE TOGGLE (No Changes - Safe)
+// ✅ 2. UPDATE MULTI-MEDIA POST
+router.put("/update/:id", upload.array("images", 10), async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { word, meaning, mediaMetadata } = req.body;
+    const metadata = JSON.parse(mediaMetadata || "[]");
+    const files = req.files || [];
+
+    let finalMedia = [];
+    let fileIndex = 0;
+
+    metadata.forEach((item) => {
+      if (item.mode === "file") {
+        // If a new file is uploaded for this slot, use it. 
+        // Otherwise, keep the existing URL sent in metadata.
+        if (files[fileIndex]) {
+          finalMedia.push({ type: item.type, url: files[fileIndex].path });
+          fileIndex++;
+        } else {
+          finalMedia.push({ type: item.type, url: item.url });
+        }
+      } else {
+        finalMedia.push({ type: item.type, url: item.url });
+      }
+    });
+
+    const updatedPost = await EnglishPost.findByIdAndUpdate(
+      postId,
+      { word, meaning, media: finalMedia, image: finalMedia[0]?.url || "" },
+      { new: true }
+    );
+
+    if (!updatedPost) return res.status(404).json({ success: false, message: "Post not found" });
+
+    res.json({ success: true, data: updatedPost });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ✅ 3. 🗳️ VOTE TOGGLE
 router.post("/vote/:postId", async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: "Login required to vote" });
-
     const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    if (!post.votedBy) post.votedBy = [];
-
     const voteIndex = post.votedBy.indexOf(email);
-    
     if (voteIndex > -1) {
       post.votedBy.splice(voteIndex, 1);
     } else {
@@ -71,75 +126,48 @@ router.post("/vote/:postId", async (req, res) => {
     }
 
     post.voteCount = post.votedBy.length;
-    
     await post.save();
     res.json({ success: true, voteCount: post.voteCount, votedBy: post.votedBy });
   } catch (err) {
-    console.error("❌ Vote Route Crash:", err);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-// ✅ 3. 🔥 SMART COMMAND STATS (Fixed for 4 Levels: Easy, Hard, Heard, DailyUse)
+// ✅ 4. 🔥 COMMAND STATS UPDATE
 router.post("/update-stat/:postId", async (req, res) => {
   try {
     const { level, email } = req.body;
-    const { postId } = req.params;
-
-    if (!email) return res.status(400).json({ message: "Email required" });
-
-    // 🔥 Schema ke naye keys se match kar raha hai
-    const allowedLevels = ['easy', 'hard', 'heard', 'dailyUse'];
-    if (!allowedLevels.includes(level)) return res.status(400).json({ message: "Invalid level" });
-
-    const post = await EnglishPost.findById(postId);
+    const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
-
-    // 🔥 Safety Check: Ensure new object keys exist for old data compatibility
-    if (!post.commandStats || !post.commandStats.easy && post.commandStats.neverHeard !== undefined) {
-      post.commandStats = { easy: 0, hard: 0, heard: 0, dailyUse: 0 };
-    }
-    if (!post.userStats) {
-      post.userStats = [];
-    }
 
     const existingIdx = post.userStats.findIndex(u => u.email === email);
 
     if (existingIdx !== -1) {
       const oldLevel = post.userStats[existingIdx].level;
-
       if (oldLevel === level) {
-        // Toggle off (Undo selection)
-        post.commandStats[level] = Math.max(0, (post.commandStats[level] || 0) - 1);
+        post.commandStats[level] = Math.max(0, post.commandStats[level] - 1);
         post.userStats.splice(existingIdx, 1);
       } else {
-        // Switch level logic
-        post.commandStats[oldLevel] = Math.max(0, (post.commandStats[oldLevel] || 0) - 1);
+        post.commandStats[oldLevel] = Math.max(0, post.commandStats[oldLevel] - 1);
         post.commandStats[level] = (post.commandStats[level] || 0) + 1;
         post.userStats[existingIdx].level = level;
       }
     } else {
-      // First time selection
       post.commandStats[level] = (post.commandStats[level] || 0) + 1;
       post.userStats.push({ email, level });
     }
 
     post.markModified('commandStats');
-    post.markModified('userStats');
-
     await post.save();
-    res.json({ success: true, commandStats: post.commandStats, userStats: post.userStats });
+    res.json({ success: true, commandStats: post.commandStats });
   } catch (err) {
-    console.error("❌ Stats Route Crash:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// ✅ 4. GET ALL 
-// ✅ GET ALL POSTS (Nayi post sabse upar)
+// ✅ 5. GET ALL POSTS
 router.get("/all", async (req, res) => {
   try {
-    // .sort({ createdAt: -1 }) se nayi post top par aayegi
     const posts = await EnglishPost.find().sort({ createdAt: -1 }); 
     res.json(posts);
   } catch (err) {
@@ -147,11 +175,10 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// ✅ 5. GET MY POSTS
+// ✅ 6. GET MY POSTS
 router.get("/my-posts", async (req, res) => {
   try {
     const { email } = req.query;
-    if (!email) return res.status(400).json({ message: "Email required" });
     const posts = await EnglishPost.find({ userEmail: email }).sort({ createdAt: -1 });
     res.json(posts);
   } catch (err) {
@@ -159,23 +186,28 @@ router.get("/my-posts", async (req, res) => {
   }
 });
 
-// ✅ 6. ADD COMMENT (Already Bulletproof)
+// ✅ 7. ADD COMMENT
 router.post("/comment/:postId", async (req, res) => {
   try {
-    const { postId } = req.params;
-    const { name, text } = req.body;
-
-    if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
-
-    const post = await EnglishPost.findById(postId);
+    const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    post.comments.push({ name, text });
+    post.comments.push({ name: req.body.name, text: req.body.text });
     await post.save();
-
     res.json({ success: true, comments: post.comments });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ 8. DELETE POST
+router.delete("/delete/:id", async (req, res) => {
+  try {
+    const deletedPost = await EnglishPost.findByIdAndDelete(req.params.id);
+    if (!deletedPost) return res.status(404).json({ success: false, message: "Resource not found" });
+    res.json({ success: true, message: "Entry successfully removed" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 

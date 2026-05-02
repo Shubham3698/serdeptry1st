@@ -3,14 +3,27 @@ const mongoose = require("mongoose");
 const EnglishPostSchema = new mongoose.Schema({
   word: { type: String, required: true },
   meaning: { type: String, required: true },
-  image: { type: String, required: true },
   userEmail: { type: String, required: true },
   
-  // 🗳️ Votes setup (Instagram Style Like System)
+  // 📸 NEW: Multi-Media Array (Replaces single image)
+  // Each object stores the type (image/video/embed) and the specific URL
+  media: [{
+    type: { 
+      type: String, 
+      enum: ["image", "video", "embed"], 
+      required: true 
+    },
+    url: { type: String, required: true }
+  }],
+
+  // Fallback for older posts (Optional: keeping it prevent breakages)
+  image: { type: String }, 
+
+  // 🗳️ Votes setup
   votedBy: { type: [String], default: [] }, 
   voteCount: { type: Number, default: 0 },
 
-  // 📊 Command Level Numbers (4 Updated Options)
+  // 📊 Command Level Numbers
   commandStats: {
     easy: { type: Number, default: 0 },
     hard: { type: Number, default: 0 },
@@ -18,12 +31,12 @@ const EnglishPostSchema = new mongoose.Schema({
     dailyUse: { type: Number, default: 0 }
   },
 
-  // 🔥 Tracking specific user choices (Radio Logic)
+  // 🔥 Tracking specific user choices
   userStats: [{
     email: { type: String },
     level: { 
       type: String, 
-      enum: ["easy", "hard", "heard", "dailyUse"] // 4 Options Match
+      enum: ["easy", "hard", "heard", "dailyUse"] 
     }
   }],
 
