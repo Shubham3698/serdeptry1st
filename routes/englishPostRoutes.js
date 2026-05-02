@@ -5,7 +5,7 @@ const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-// ☁️ CLOUDINARY CONFIG (Rehndena same)
+// ☁️ CLOUDINARY CONFIG
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -23,7 +23,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// ✅ 1. CREATE POST (Same as before)
+// ✅ 1. CREATE POST
 router.post("/create", upload.single("image"), async (req, res) => {
   try {
     let imageUrl = req.body.image;
@@ -36,6 +36,11 @@ router.post("/create", upload.single("image"), async (req, res) => {
       image: imageUrl,
       userEmail: req.body.userEmail,
       badgeName: req.body.badgeName || "Normal",
+      // Initialize defaults to avoid null errors later
+      votedBy: [],
+      voteCount: 0,
+      commandStats: { neverHeard: 0, heardButNotUsed: 0, dailyUse: 0 },
+      userStats: []
     });
 
     await newPost.save();
@@ -45,35 +50,43 @@ router.post("/create", upload.single("image"), async (req, res) => {
   }
 });
 
-// ✅ 2. VOTE / UNVOTE TOGGLE (Same as before)
+// ✅ 2. 🗳️ INSTAGRAM STYLE VOTE TOGGLE (Fixed with Safety Checks)
 router.post("/vote/:postId", async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Login required to vote" });
+
     const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
+    // 🔥 CRASH FIX: Ensure votedBy array exists
+    if (!post.votedBy) post.votedBy = [];
+
     const voteIndex = post.votedBy.indexOf(email);
+    
     if (voteIndex > -1) {
       post.votedBy.splice(voteIndex, 1);
-      post.voteCount = Math.max(0, (post.voteCount || 0) - 1);
     } else {
       post.votedBy.push(email);
-      post.voteCount = (post.voteCount || 0) + 1;
     }
+
+    post.voteCount = post.votedBy.length;
+    
     await post.save();
     res.json({ success: true, voteCount: post.voteCount, votedBy: post.votedBy });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Vote Route Crash:", err); // Backend terminal mein check karo
+    res.status(500).json({ message: "Internal Server Error. Check terminal." });
   }
 });
 
-// ✅ 3. 🔥 SMART UPDATE COMMAND STATS (FIXED FOR ONE-USER-ONE-LEVEL)
+// ✅ 3. 🔥 SMART COMMAND STATS (Fixed with Safety Checks)
 router.post("/update-stat/:postId", async (req, res) => {
   try {
-    const { level, email } = req.body; // Frontend se email bhej rahe ho ab
+    const { level, email } = req.body;
     const { postId } = req.params;
 
-    if (!email) return res.status(400).json({ message: "Email is required to track progress" });
+    if (!email) return res.status(400).json({ message: "Email required" });
 
     const allowedLevels = ['neverHeard', 'heardButNotUsed', 'dailyUse'];
     if (!allowedLevels.includes(level)) return res.status(400).json({ message: "Invalid level" });
@@ -81,49 +94,44 @@ router.post("/update-stat/:postId", async (req, res) => {
     const post = await EnglishPost.findById(postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // Ensure commandStats object exists
+    // 🔥 CRASH FIX: Ensure objects/arrays exist before running logic
     if (!post.commandStats) {
       post.commandStats = { neverHeard: 0, heardButNotUsed: 0, dailyUse: 0 };
     }
+    if (!post.userStats) {
+      post.userStats = [];
+    }
 
-    // Check karo kya is user ne pehle koi level select kiya tha?
-    // userStats: [{ email: String, level: String }]
     const existingIdx = post.userStats.findIndex(u => u.email === email);
 
     if (existingIdx !== -1) {
       const oldLevel = post.userStats[existingIdx].level;
 
-      // 1. Agar wahi same level phir se dabaya -> Undo (Remove Selection)
       if (oldLevel === level) {
         post.commandStats[level] = Math.max(0, (post.commandStats[level] || 0) - 1);
         post.userStats.splice(existingIdx, 1);
-      } 
-      // 2. Agar different level dabaya -> Switch Level
-      else {
+      } else {
         post.commandStats[oldLevel] = Math.max(0, (post.commandStats[oldLevel] || 0) - 1);
         post.commandStats[level] = (post.commandStats[level] || 0) + 1;
         post.userStats[existingIdx].level = level;
       }
-    } 
-    // 3. Agar pehli baar select kar raha hai
-    else {
+    } else {
       post.commandStats[level] = (post.commandStats[level] || 0) + 1;
       post.userStats.push({ email, level });
     }
 
-    // Mark as modified kyunki nested objects update ho rahe hain
     post.markModified('commandStats');
     post.markModified('userStats');
 
     await post.save();
     res.json({ success: true, commandStats: post.commandStats, userStats: post.userStats });
   } catch (err) {
-    console.error("Stats Error:", err);
+    console.error("❌ Stats Route Crash:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// ✅ 4. GET ALL COMMUNITY POSTS
+// ✅ 4. GET ALL 
 router.get("/all", async (req, res) => {
   try {
     const posts = await EnglishPost.find().sort({ voteCount: -1, createdAt: -1 });
@@ -142,6 +150,26 @@ router.get("/my-posts", async (req, res) => {
     res.json(posts);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ✅ ADD COMMENT
+router.post("/comment/:postId", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { name, text } = req.body;
+
+    if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+
+    const post = await EnglishPost.findById(postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    post.comments.push({ name, text });
+    await post.save();
+
+    res.json({ success: true, comments: post.comments });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 

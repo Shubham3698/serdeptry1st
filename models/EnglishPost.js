@@ -28,7 +28,12 @@ const EnglishPostSchema = new mongoose.Schema({
     enum: ["Easy", "Normal", "Professional", "Trending", "Popular"], 
     default: "Normal" 
   },
-
+// 🔥 Ye add karo:
+  comments: [{
+    name: String,
+    text: String,
+    createdAt: { type: Date, default: Date.now }
+  }],
   createdAt: { type: Date, default: Date.now },
 });
 
