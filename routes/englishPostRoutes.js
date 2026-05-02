@@ -136,9 +136,11 @@ router.post("/update-stat/:postId", async (req, res) => {
 });
 
 // ✅ 4. GET ALL 
+// ✅ GET ALL POSTS (Nayi post sabse upar)
 router.get("/all", async (req, res) => {
   try {
-    const posts = await EnglishPost.find().sort({ voteCount: -1, createdAt: -1 });
+    // .sort({ createdAt: -1 }) se nayi post top par aayegi
+    const posts = await EnglishPost.find().sort({ createdAt: -1 }); 
     res.json(posts);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
