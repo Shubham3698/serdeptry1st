@@ -2,30 +2,89 @@ const express = require("express");
 const router = express.Router();
 const EnglishUser = require("../models/EnglishUser");
 
-// Signup logic
+// ==========================================
+// 🚀 SIGNUP / SYNC (Google & Email Support)
+// ==========================================
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, firebaseUid } = req.body;
-    let user = await EnglishUser.findOne({ email });
-    if (!user) {
-      user = new EnglishUser({ name, email, firebaseUid });
-      await user.save();
+
+    if (!email || !firebaseUid) {
+      return res.status(400).json({ success: false, message: "Email and UID are required" });
     }
-    res.status(201).json(user);
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 🔄 Find if user already exists in English Hub collection
+    let user = await EnglishUser.findOne({ email: cleanEmail });
+
+    if (user) {
+      // ✅ Agar user exist karta hai, toh bas Firebase UID aur Name update karo (Sync)
+      user.firebaseUid = firebaseUid;
+      if (name && name !== "User") user.name = name; 
+      await user.save();
+      
+      return res.status(200).json({
+        success: true,
+        message: "User synced successfully",
+        email: user.email,
+        name: user.name
+      });
+    }
+
+    // ✨ Naya user create karo (Fresh Join)
+    const newUser = new EnglishUser({ 
+      name: name || "User", 
+      email: cleanEmail, 
+      firebaseUid,
+      appOrigin: "english-community" 
+    });
+    
+    await newUser.save();
+
+    res.status(201).json({
+      success: true,
+      message: "New member joined English Hub",
+      email: newUser.email,
+      name: newUser.name
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("❌ Signup/Sync Error:", err);
+    res.status(500).json({ success: false, message: "Server error during registration" });
   }
 });
 
-// Login logic
+// ==========================================
+// 🔑 LOGIN (Fetch verified user data)
+// ==========================================
 router.post("/login", async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await EnglishUser.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found in English DB" });
-    res.json(user);
+    
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email required" });
+    }
+
+    const user = await EnglishUser.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Account not found in English Hub. Please Join Now." 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      email: user.email,
+      name: user.name
+    });
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Login Error:", err);
+    res.status(500).json({ success: false, message: "Server error during login" });
   }
 });
 
