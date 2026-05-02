@@ -10,20 +10,26 @@ const EnglishPostSchema = new mongoose.Schema({
   votedBy: { type: [String], default: [] }, 
   voteCount: { type: Number, default: 0 },
 
-  // 📊 Command Level
+  // 📊 Command Level Numbers
   commandStats: {
     neverHeard: { type: Number, default: 0 },
     heardButNotUsed: { type: Number, default: 0 },
     dailyUse: { type: Number, default: 0 }
   },
+
+  // 🔥 Tracking specific user choices (Radio Logic ke liye zaroori hai)
+  userStats: [{
+    email: { type: String },
+    level: { type: String, enum: ["neverHeard", "heardButNotUsed", "dailyUse"] }
+  }],
+
   badgeName: { 
-  type: String, 
-  enum: ["Easy", "Normal", "Professional", "Trending", "Popular"], 
-  default: "Normal" 
-},
+    type: String, 
+    enum: ["Easy", "Normal", "Professional", "Trending", "Popular"], 
+    default: "Normal" 
+  },
 
   createdAt: { type: Date, default: Date.now },
 });
 
-// ✅ Model ko export karna sirf EK BAAR
 module.exports = mongoose.model("EnglishPost", EnglishPostSchema);
