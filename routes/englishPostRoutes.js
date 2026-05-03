@@ -225,4 +225,48 @@ router.get("/saved", async (req, res) => {
   }
 });
 
+// ✅ DELETE COMMENT
+router.delete("/comment/:postId/:commentId", async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { email } = req.body; // Verification ke liye
+
+    const post = await EnglishPost.findById(postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
+
+    // Optional: Check if user owns the comment
+    // if (comment.email !== email) return res.status(403).json({ message: "Unauthorized" });
+
+    comment.remove(); // Mongoose sub-document removal
+    await post.save();
+    res.json({ success: true, comments: post.comments });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ EDIT COMMENT
+router.put("/comment/:postId/:commentId", async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { text } = req.body;
+
+    const post = await EnglishPost.findById(postId);
+    const comment = post.comments.id(commentId);
+    
+    if (comment) {
+      comment.text = text;
+      await post.save();
+      res.json({ success: true, comments: post.comments });
+    } else {
+      res.status(404).json({ message: "Comment not found" });
+    }
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
