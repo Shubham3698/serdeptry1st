@@ -16,15 +16,14 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "english_community_posts",
-    allowed_formats: ["jpg", "png", "jpeg", "webp", "mp4", "mov"], // Added video formats
-    resource_type: "auto", // Essential for Video + Image support
+    allowed_formats: ["jpg", "png", "jpeg", "webp", "mp4", "mov"],
+    resource_type: "auto", 
   },
 });
 
 const upload = multer({ storage: storage });
 
 // ✅ 1. CREATE MULTI-MEDIA POST
-// Optimized to handle a sequence of Images, Videos, and YouTube Embeds
 router.post("/create", upload.array("images", 10), async (req, res) => {
   try {
     const { word, meaning, userEmail, mediaMetadata } = req.body;
@@ -34,7 +33,6 @@ router.post("/create", upload.array("images", 10), async (req, res) => {
     let finalMedia = [];
     let fileIndex = 0;
 
-    // Merge uploaded files and links based on the sequence from frontend
     metadata.forEach((item) => {
       if (item.mode === "file") {
         if (files[fileIndex]) {
@@ -46,7 +44,6 @@ router.post("/create", upload.array("images", 10), async (req, res) => {
       }
     });
 
-    // Fallback: If no metadata but single image exists (Old app compatibility)
     if (finalMedia.length === 0 && (req.body.image || files[0])) {
       finalMedia.push({ 
         type: "image", 
@@ -58,8 +55,8 @@ router.post("/create", upload.array("images", 10), async (req, res) => {
       word,
       meaning,
       userEmail,
-      media: finalMedia, // Saving the full sequence
-      image: finalMedia[0]?.url || "", // Keeping for backward compatibility
+      media: finalMedia,
+      image: finalMedia[0]?.url || "",
       badgeName: req.body.badgeName || "Normal",
       commandStats: { easy: 0, hard: 0, heard: 0, dailyUse: 0 },
     });
@@ -84,8 +81,6 @@ router.put("/update/:id", upload.array("images", 10), async (req, res) => {
 
     metadata.forEach((item) => {
       if (item.mode === "file") {
-        // If a new file is uploaded for this slot, use it. 
-        // Otherwise, keep the existing URL sent in metadata.
         if (files[fileIndex]) {
           finalMedia.push({ type: item.type, url: files[fileIndex].path });
           fileIndex++;
@@ -104,7 +99,6 @@ router.put("/update/:id", upload.array("images", 10), async (req, res) => {
     );
 
     if (!updatedPost) return res.status(404).json({ success: false, message: "Post not found" });
-
     res.json({ success: true, data: updatedPost });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -133,31 +127,40 @@ router.post("/vote/:postId", async (req, res) => {
   }
 });
 
-// ✅ 4. 🔥 COMMAND STATS UPDATE
+// ✅ 4. 🔥 COMMAND STATS UPDATE (SRS Logic Fixed)
 router.post("/update-stat/:postId", async (req, res) => {
   try {
-    const { level, email } = req.body;
+    const { level, email, nextReview } = req.body;
     const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
     const existingIdx = post.userStats.findIndex(u => u.email === email);
+    
+    // 🧠 Date conversion wrapper: Essential for time comparison logic
+    const reviewDate = nextReview ? new Date(nextReview) : null;
 
     if (existingIdx !== -1) {
       const oldLevel = post.userStats[existingIdx].level;
-      if (oldLevel === level) {
-        post.commandStats[level] = Math.max(0, post.commandStats[level] - 1);
+      
+      // Agar practice se call nahi hai aur level same hai, toh toggle (remove) karo
+      if (oldLevel === level && nextReview === undefined) {
+        post.commandStats[level] = Math.max(0, (post.commandStats[level] || 0) - 1);
         post.userStats.splice(existingIdx, 1);
       } else {
-        post.commandStats[oldLevel] = Math.max(0, post.commandStats[oldLevel] - 1);
+        // Update existing record
+        post.commandStats[oldLevel] = Math.max(0, (post.commandStats[oldLevel] || 0) - 1);
         post.commandStats[level] = (post.commandStats[level] || 0) + 1;
         post.userStats[existingIdx].level = level;
+        post.userStats[existingIdx].nextReview = reviewDate; // ✅ Saving as Date Object
       }
     } else {
+      // Add new record
       post.commandStats[level] = (post.commandStats[level] || 0) + 1;
-      post.userStats.push({ email, level });
+      post.userStats.push({ email, level, nextReview: reviewDate }); // ✅ Saving as Date Object
     }
 
     post.markModified('commandStats');
+    post.markModified('userStats'); 
     await post.save();
     res.json({ success: true, commandStats: post.commandStats });
   } catch (err) {
@@ -208,6 +211,17 @@ router.delete("/delete/:id", async (req, res) => {
     res.json({ success: true, message: "Entry successfully removed" });
   } catch (err) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+// ✅ 9. GET ALL SAVED POSTS
+router.get("/saved", async (req, res) => {
+  const { email } = req.query;
+  try {
+    const posts = await EnglishPost.find({ "userStats.email": email });
+    res.status(200).json(posts);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching saved words", error: err });
   }
 });
 

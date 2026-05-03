@@ -5,8 +5,7 @@ const EnglishPostSchema = new mongoose.Schema({
   meaning: { type: String, required: true },
   userEmail: { type: String, required: true },
   
-  // 📸 NEW: Multi-Media Array (Replaces single image)
-  // Each object stores the type (image/video/embed) and the specific URL
+  // 📸 Multi-Media Array
   media: [{
     type: { 
       type: String, 
@@ -16,7 +15,6 @@ const EnglishPostSchema = new mongoose.Schema({
     url: { type: String, required: true }
   }],
 
-  // Fallback for older posts (Optional: keeping it prevent breakages)
   image: { type: String }, 
 
   // 🗳️ Votes setup
@@ -31,13 +29,15 @@ const EnglishPostSchema = new mongoose.Schema({
     dailyUse: { type: Number, default: 0 }
   },
 
-  // 🔥 Tracking specific user choices
+  // 🔥 Tracking specific user choices (Fixed nextReview location)
   userStats: [{
     email: { type: String },
     level: { 
       type: String, 
       enum: ["easy", "hard", "heard", "dailyUse"] 
-    }
+    },
+    // ✅ Practice mode ke liye anivarya field
+    nextReview: { type: Date, default: null } 
   }],
 
   // 🏷️ Badge Logic
