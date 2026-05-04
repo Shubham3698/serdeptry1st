@@ -19,7 +19,7 @@ router.post("/signup", async (req, res) => {
     let user = await EnglishUser.findOne({ email: cleanEmail });
 
     if (user) {
-      // ✅ Agar user exist karta hai, toh bas Firebase UID aur Name update karo (Sync)
+      // ✅ Sync logic (Keep it as is)
       user.firebaseUid = firebaseUid;
       if (name && name !== "User") user.name = name; 
       await user.save();
@@ -28,7 +28,10 @@ router.post("/signup", async (req, res) => {
         success: true,
         message: "User synced successfully",
         email: user.email,
-        name: user.name
+        name: user.name,
+        // 🔥 Return premium status during sync
+        isPremium: user.isPremium || false,
+        planType: user.planType || "free"
       });
     }
 
@@ -38,6 +41,7 @@ router.post("/signup", async (req, res) => {
       email: cleanEmail, 
       firebaseUid,
       appOrigin: "english-community" 
+      // isPremium and planType will take default values from Schema
     });
     
     await newUser.save();
@@ -46,7 +50,9 @@ router.post("/signup", async (req, res) => {
       success: true,
       message: "New member joined English Hub",
       email: newUser.email,
-      name: newUser.name
+      name: newUser.name,
+      isPremium: false,
+      planType: "free"
     });
 
   } catch (err) {
@@ -79,7 +85,11 @@ router.post("/login", async (req, res) => {
       success: true,
       message: "Login successful",
       email: user.email,
-      name: user.name
+      name: user.name,
+      // 🔥 BHEJO PREMIUM DATA: Isse frontend features unlock honge
+      isPremium: user.isPremium || false,
+      planType: user.planType || "free",
+      premiumExpiry: user.premiumExpiry || null
     });
 
   } catch (err) {

@@ -87,6 +87,7 @@ const wishlistRoutes = require("./routes/wishlistRoutes");
 
 const englishUsersRouter = require("./routes/englishUsers");
 const englishPostRoutes = require("./routes/englishPostRoutes");
+const engPaymentRoutes = require("./routes/engPaymentRoutes");
 // =====================
 // Routes Use
 // =====================
@@ -104,7 +105,7 @@ app.use("/api/wishlist", wishlistRoutes);
 
 app.use("/api/english-community/users", englishUsersRouter);
 app.use("/api/english-posts", englishPostRoutes);
-
+app.use("/api/eng-payment", engPaymentRoutes);
 
 // =====================
 // Test Route (Deployment Check)
