@@ -5,7 +5,7 @@ const EnglishPostSchema = new mongoose.Schema({
   meaning: { type: String, required: true },
   userEmail: { type: String, required: true },
   
-  // 📸 Multi-Media Array
+  // 📸 Multi-Media Array (Images, Videos, YouTube Embeds)
   media: [{
     type: { 
       type: String, 
@@ -21,6 +21,10 @@ const EnglishPostSchema = new mongoose.Schema({
   votedBy: { type: [String], default: [] }, 
   voteCount: { type: Number, default: 0 },
 
+  // 📥 NEW: Saved Posts setup (User Emails store honge)
+  // Isse tera "My Saved Vault" feature chalega
+  savedBy: { type: [String], default: [] },
+
   // 📊 Command Level Numbers
   commandStats: {
     easy: { type: Number, default: 0 },
@@ -29,7 +33,7 @@ const EnglishPostSchema = new mongoose.Schema({
     dailyUse: { type: Number, default: 0 }
   },
 
-  // 🔥 Tracking specific user choices (Fixed nextReview location)
+  // 🔥 Tracking specific user choices (SRS Practice Logic)
   userStats: [{
     email: { type: String },
     level: { 

@@ -269,4 +269,45 @@ router.put("/comment/:postId/:commentId", async (req, res) => {
   }
 });
 
+// ✅ SAVE / UNSAVE TOGGLE (Separate Logic)
+router.post("/save/:postId", async (req, res) => {
+  const { postId } = req.params;
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: "Email required" });
+
+  try {
+    const post = await EnglishPost.findById(postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    if (!post.savedBy) { post.savedBy = []; }
+
+    const isSaved = post.savedBy.includes(email);
+    if (isSaved) {
+      post.savedBy = post.savedBy.filter((e) => e !== email);
+    } else {
+      post.savedBy.push(email);
+    }
+
+    post.markModified('savedBy');
+    await post.save();
+    res.status(200).json({ isSaved: !isSaved });
+  } catch (err) {
+    res.status(500).json({ message: "Internal Error", error: err.message });
+  }
+});
+
+// ✅ GET ONLY SAVED POSTS (For Vault & Profile Page)
+router.get("/saved-posts", async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ message: "Email required" });
+  try {
+    const savedPosts = await EnglishPost.find({
+      savedBy: { $in: [email] }
+    }).sort({ createdAt: -1 });
+    res.status(200).json(savedPosts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
