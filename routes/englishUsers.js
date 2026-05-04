@@ -98,4 +98,24 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// Pehle ye tha: router.get("/users/status", ... )
+// Ise ye kar do:
+router.get("/status", async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const user = await EnglishUser.findOne({ email: email });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({
+      isPremium: user.isPremium || false,
+      planType: user.planType || "free"
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 module.exports = router;
