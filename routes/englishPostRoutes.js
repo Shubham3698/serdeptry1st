@@ -4,6 +4,7 @@ const EnglishPost = require("../models/EnglishPost");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const translate = require('google-translate-api-next');
 
 // ☁️ CLOUDINARY CONFIGURATION
 cloudinary.config({
@@ -310,4 +311,71 @@ router.get("/saved-posts", async (req, res) => {
   }
 });
 
+router.get("/auto-translate", async (req, res) => {
+  try {
+    const { text } = req.query;
+    if (!text) return res.status(400).json({ success: false, message: "Text missing!" });
+
+    // English to Hindi translate
+    const result = await translate(text, { to: 'hi' });
+
+    res.json({
+      success: true,
+      original: text,
+      translated: result.text
+    });
+  } catch (error) {
+    console.error("Translation Error:", error);
+    res.status(500).json({ success: false, message: "Translation failed" });
+  }
+});
+
+// ==========================================
+// 📄 GET ALL POSTS
+// ==========================================
+router.get("/all", async (req, res) => {
+  try {
+    const posts = await EnglishPost.find().sort({ createdAt: -1 });
+    res.json(posts);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// routes/englishPostRoutes.js mein add karo
+
+// ==========================================
+// 🔊 GET HINDI PRONUNCIATION (Sound Hint)
+// ==========================================
+const axios = require("axios"); // Axios install kar lena: npm install axios
+
+// ==========================================
+// 🔊 GET HINDI PRONUNCIATION (English to Hindi Script)
+// ==========================================
+router.get("/get-pronunciation", async (req, res) => {
+  try {
+    const { text } = req.query;
+    if (!text) return res.status(400).json({ success: false, message: "Text missing" });
+
+    // 🔥 Google Input Tools API for Transliteration (Ye 'Run' ko 'रन' banayega)
+    const googleUrl = `https://inputtools.google.com/request?text=${encodeURIComponent(text)}&itc=hi-t-i0-und&num=1`;
+    
+    const response = await axios.get(googleUrl);
+    
+    if (response.data[0] === "SUCCESS") {
+      // Data format: ["SUCCESS", [["word", ["hindi_word"]]]]
+      const pronunciation = response.data[1][0][1][0];
+      
+      res.json({
+        success: true,
+        pronunciation: pronunciation
+      });
+    } else {
+      res.status(500).json({ success: false, message: "Transliteration failed" });
+    }
+  } catch (error) {
+    console.error("Pronunciation Error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 module.exports = router;
