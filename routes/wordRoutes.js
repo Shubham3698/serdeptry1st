@@ -2,11 +2,8 @@ const express = require("express");
 const router = express.Router();
 const translate = require("google-translate-api-next");
 const axios = require("axios");
-const OpenAI = require("openai");
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// 🔥 OpenAI wala part poora saaf kar diya hai taaki Render crash na ho
 
 router.get("/search-live", async (req, res) => {
   try {
@@ -14,9 +11,9 @@ router.get("/search-live", async (req, res) => {
     if (!q) return res.status(400).json({ success: false });
 
     const searchWord = q.trim();
-    console.log("🔍 Searching for:", searchWord);
+    console.log("🔍 Deep Searching for:", searchWord);
 
-    // 1️⃣ Hindi Meaning
+    // 1️⃣ Hindi Meaning (Google Translate)
     let hindiMeaning = "";
     try {
       const translation = await translate(searchWord, { to: "hi" });
@@ -25,57 +22,55 @@ router.get("/search-live", async (req, res) => {
       hindiMeaning = "Meaning not found";
     }
 
-    // 2️⃣ Dictionary
+    // 2️⃣ Dictionary + Examples (Free Dictionary API)
     let grammarType = "Word";
     let definition = "";
+    let exampleSentences = [];
+
     try {
       const dictRes = await axios.get(
-        `https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`,
+        { timeout: 4000 } // 4 seconds timeout taaki server hang na ho
       );
-      grammarType = dictRes.data[0].meanings[0].partOfSpeech;
-      definition =
-        dictRes.data[0].meanings[0].definitions[0].definition;
+
+      if (dictRes.data && dictRes.data[0]) {
+        const firstEntry = dictRes.data[0];
+        const firstMeaning = firstEntry.meanings[0];
+
+        // ✅ Grammar (Noun, Verb, etc.)
+        grammarType = firstMeaning.partOfSpeech;
+
+        // ✅ Definition
+        definition = firstMeaning.definitions[0].definition;
+
+        // ✅ Examples (API se nikal rahe hain bina OpenAI ke)
+        // Hum saare meanings mein se examples nikalenge
+        let allExamples = [];
+        firstEntry.meanings.forEach((m) => {
+          m.definitions.forEach((d) => {
+            if (d.example) allExamples.push(d.example);
+          });
+        });
+
+        // Agar API mein examples hain toh wo lo, warna fallback sentences banao
+        if (allExamples.length > 0) {
+          exampleSentences = allExamples.slice(0, 3);
+        } else {
+          exampleSentences = [
+            `I can use the word "${searchWord}" in a sentence.`,
+            `Do you know what "${searchWord}" means?`,
+            `Let's practice the word "${searchWord}" today.`
+          ];
+        }
+      }
     } catch (e) {
-      console.log("Dict API error");
+      console.log("Dict API error or Word not found in Dictionary");
+      definition = "Detailed explanation available in community posts.";
+      exampleSentences = [`Check the posts tab to see how to use "${searchWord}".`];
     }
 
-    // 3️⃣ 🔥 OPENAI GPT SENTENCES
-    let exampleSentences = [];
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini", // fast + cheap + best for this
-        messages: [
-          {
-            role: "system",
-            content:
-              "You generate simple English sentences for vocabulary learners.",
-          },
-          {
-            role: "user",
-            content: `Give exactly 3 short and simple sentences using the word "${searchWord}". 
-Rules:
-- No numbering
-- No bullet points
-- Each sentence in new line
-- Easy English`,
-          },
-        ],
-        temperature: 0.7,
-      });
-
-      const aiText = completion.choices[0].message.content;
-
-      exampleSentences = aiText
-        .split("\n")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 5)
-        .slice(0, 3);
-
-      console.log("✅ OpenAI Success!");
-    } catch (err) {
-      console.error("🚨 OpenAI Error:", err.message);
-      exampleSentences = [];
-    }
+    // --- NOTE: Yahan 'EnglishPost.find' wala logic agar tune dusri file mein rakha hai 
+    // toh theek hai, warna related posts ke liye yahan query add karni hogi ---
 
     res.json({
       success: true,
@@ -86,6 +81,7 @@ Rules:
       exampleSentences: exampleSentences,
     });
   } catch (err) {
+    console.error("🚨 Final Route Error:", err.message);
     res.status(500).json({ success: false });
   }
 });
