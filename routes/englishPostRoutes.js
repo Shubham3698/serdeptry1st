@@ -227,25 +227,39 @@ router.get("/saved", async (req, res) => {
 });
 
 // ✅ DELETE COMMENT
+// ✅ DELETE COMMENT (Fixed & Bulletproof)
 router.delete("/comment/:postId/:commentId", async (req, res) => {
   try {
     const { postId, commentId } = req.params;
-    const { email } = req.body; // Verification ke liye
 
+    // 1. Post dhundo
     const post = await EnglishPost.findById(postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (!post) return res.status(404).json({ success: false, message: "Post not found" });
 
-    const comment = post.comments.id(commentId);
-    if (!comment) return res.status(404).json({ message: "Comment not found" });
+    // 2. 🔥 THE FIX: pull() method use karo
+    // Ye MongoDB ke $pull operator ko use karke array se item saaf kar deta hai
+    const initialLength = post.comments.length;
+    post.comments.pull({ _id: commentId });
 
-    // Optional: Check if user owns the comment
-    // if (comment.email !== email) return res.status(403).json({ message: "Unauthorized" });
+    // Check karo agar delete hua bhi ya nahi
+    if (post.comments.length === initialLength) {
+      return res.status(404).json({ success: false, message: "Comment not found" });
+    }
 
-    comment.remove(); // Mongoose sub-document removal
+    // 3. Save changes
     await post.save();
-    res.json({ success: true, comments: post.comments });
+
+    console.log(`🗑️ Comment ${commentId} removed successfully!`);
+
+    res.json({ 
+      success: true, 
+      message: "Comment deleted", 
+      comments: post.comments // Updated list bhejo taaki frontend refresh ho jaye
+    });
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("🚨 Delete Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -378,4 +392,67 @@ router.get("/get-pronunciation", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
+// ✅ SEARCH LIVE: Optimized with Grammar & Explanation
+router.get("/search-live", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.status(400).json({ success: false });
+
+    const searchWord = q.trim();
+    console.log("🔍 Deep Searching for:", searchWord);
+
+    // 1. Hindi Meaning (Google Translate)
+    let hindiMeaning = "";
+    try {
+      const translation = await translate(searchWord, { to: "hi" });
+      hindiMeaning = translation.text;
+    } catch (e) { hindiMeaning = "Meaning not found"; }
+
+    // 2. Grammar & Explanation (Free Dictionary API)
+    let grammarType = "Vocabulary";
+    let detailedDefinition = "Definition available in community posts.";
+    let examples = [];
+
+    try {
+      // Yahan hum axios use kar rahe hain, declare upar file ke top pe ho chuka hai
+      const dictRes = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`, { timeout: 3000 });
+      if (dictRes.data?.[0]) {
+        const firstEntry = dictRes.data[0];
+        grammarType = firstEntry.meanings[0].partOfSpeech; 
+        detailedDefinition = firstEntry.meanings[0].definitions[0].definition;
+        if (firstEntry.meanings[0].definitions[0].example) {
+          examples = [firstEntry.meanings[0].definitions[0].example];
+        }
+      }
+    } catch (err) {
+      console.log("Dict API error or Word not found, skipping detailed info.");
+    }
+
+    // 3. Database Search (Regex for quotes and fuzzy match)
+    const filteredPosts = await EnglishPost.find({
+      $or: [
+        { word: { $regex: searchWord, $options: "i" } },
+        { meaning: { $regex: searchWord, $options: "i" } }
+      ]
+    }).sort({ createdAt: -1 });
+
+    console.log(`✅ Matches Found in DB: ${filteredPosts.length}`);
+
+    res.json({
+      success: true,
+      word: searchWord,
+      meaning: hindiMeaning,
+      grammar: grammarType,
+      definition: detailedDefinition,
+      exampleSentences: examples,
+      relatedPosts: filteredPosts 
+    });
+
+  } catch (err) {
+    console.error("🚨 Server Error:", err.message);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
 module.exports = router;
