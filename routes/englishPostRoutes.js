@@ -24,84 +24,146 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// ✅ 1. CREATE MULTI-MEDIA POST
-router.post("/create", upload.array("images", 10), async (req, res) => {
+// ✅ 1. CREATE SMART DECK POST (Multi-Word + Multi-Media Mapping)
+router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
-    const { word, meaning, userEmail, mediaMetadata } = req.body;
-    const metadata = JSON.parse(mediaMetadata || "[]");
+    const { userEmail, vocabData, mediaMetadata, badgeName } = req.body;
+    
+    // 🔥 Safe JSON Parsing
+    const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
+    const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
-    let finalMedia = [];
-    let fileIndex = 0;
-
-    metadata.forEach((item) => {
-      if (item.mode === "file") {
-        if (files[fileIndex]) {
-          finalMedia.push({ type: item.type, url: files[fileIndex].path });
-          fileIndex++;
-        }
-      } else {
-        finalMedia.push({ type: item.type, url: item.url });
-      }
-    });
-
-    if (finalMedia.length === 0 && (req.body.image || files[0])) {
-      finalMedia.push({ 
-        type: "image", 
-        url: files[0] ? files[0].path : req.body.image 
-      });
+    if (parsedVocab.length === 0) {
+      return res.status(400).json({ success: false, message: "Bhai, kam se kam ek word toh dalo!" });
     }
 
-    const newPost = new EnglishPost({
-      word,
-      meaning,
-      userEmail,
-      media: finalMedia,
-      image: finalMedia[0]?.url || "",
-      badgeName: req.body.badgeName || "Normal",
-      commandStats: { easy: 0, hard: 0, heard: 0, dailyUse: 0 },
+    let fileIndex = 0;
+
+    // 🔥 SMART MAPPING: Har word ko uski specific images assign karna
+    // Ye logic metadata se check karega ki kaunsi file kis word (vocabIndex) ke liye hai
+    const finalVocabData = parsedVocab.map((vocab, vIdx) => {
+      let wordMedia = [];
+
+      // Is specific word (vIdx) se jude saare media metadata filter karo
+      const currentWordMeta = metadata.filter(m => m.vocabIndex === vIdx);
+
+      currentWordMeta.forEach((meta) => {
+        if (meta.mode === "file") {
+          // Agar file mode hai aur file exist karti hai
+          if (files[fileIndex]) {
+            wordMedia.push({ 
+              type: meta.type, 
+              url: files[fileIndex].path // Cloudinary URL
+            });
+            fileIndex++;
+          }
+        } else if (meta.url) {
+          // Agar direct URL/Link dala hai
+          wordMedia.push({ 
+            type: meta.type, 
+            url: meta.url 
+          });
+        }
+      });
+
+      return {
+        word: vocab.word,
+        meaning: vocab.meaning,
+        media: wordMedia
+      };
     });
 
+    const newPost = new EnglishPost({
+      vocabData: finalVocabData,
+      userEmail,
+      badgeName: badgeName || "Normal",
+      // commandStats auto-initialize honge model defaults se
+    });
+
+    // Save post (Middleware global word/image fields apne aap set kar dega)
     await newPost.save();
-    res.status(201).json({ success: true, data: newPost });
+    
+    res.status(201).json({ 
+      success: true, 
+      message: "Smart Deck Created! 🚀", 
+      data: newPost 
+    });
+
   } catch (err) {
+    console.error("🚨 Create Deck Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ✅ 2. UPDATE MULTI-MEDIA POST
-router.put("/update/:id", upload.array("images", 10), async (req, res) => {
+// ✅ 2. UPDATE SMART DECK POST
+// Isme har word ki apni specific media array sync hogi bina purana data (votes) khoiye
+router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
     const postId = req.params.id;
-    const { word, meaning, mediaMetadata } = req.body;
-    const metadata = JSON.parse(mediaMetadata || "[]");
+    const { vocabData, mediaMetadata } = req.body;
+    
+    // 1. Existing post fetch karo taaki Votes aur Stats safe rahein
+    const existingPost = await EnglishPost.findById(postId);
+    if (!existingPost) {
+      return res.status(404).json({ success: false, message: "Post not found" });
+    }
+
+    // 🔥 Safe Parsing
+    const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
+    const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
-    let finalMedia = [];
     let fileIndex = 0;
 
-    metadata.forEach((item) => {
-      if (item.mode === "file") {
-        if (files[fileIndex]) {
-          finalMedia.push({ type: item.type, url: files[fileIndex].path });
-          fileIndex++;
-        } else {
-          finalMedia.push({ type: item.type, url: item.url });
+    // 🔥 SMART DECK RE-MAPPING
+    const finalVocabData = parsedVocab.map((vocab, vIdx) => {
+      let wordMedia = [];
+
+      // Is specific card (vocabIndex) ke liye metadata filter karo
+      const currentWordMeta = metadata.filter(m => m.vocabIndex === vIdx);
+
+      currentWordMeta.forEach((meta) => {
+        if (meta.mode === "file") {
+          if (files[fileIndex]) {
+            // Agar naya file upload hua hai (Design Studio se ya direct)
+            wordMedia.push({ type: meta.type, url: files[fileIndex].path });
+            fileIndex++;
+          } else if (meta.url) {
+            // Agar file upload nahi hua, toh purana existing URL use karo
+            wordMedia.push({ type: meta.type, url: meta.url });
+          }
+        } else if (meta.url) {
+          // Link/Embed mode wala data
+          wordMedia.push({ type: meta.type, url: meta.url });
         }
-      } else {
-        finalMedia.push({ type: item.type, url: item.url });
-      }
+      });
+
+      return {
+        word: vocab.word,
+        meaning: vocab.meaning,
+        media: wordMedia
+      };
     });
 
-    const updatedPost = await EnglishPost.findByIdAndUpdate(
-      postId,
-      { word, meaning, media: finalMedia, image: finalMedia[0]?.url || "" },
-      { new: true }
-    );
+    // 🔥 DATA INTEGRITY FIX: 
+    // findByIdAndUpdate use karne ki jagah seedha object modify karke .save() karo
+    // Isse 'pre-save' middleware trigger hoga aur Votes/Stats delete nahi honge.
+    existingPost.vocabData = finalVocabData;
+    
+    // Agar frontend se badgeName ya koi aur field aa rahi hai toh wo bhi update kar sakte ho
+    if (req.body.badgeName) existingPost.badgeName = req.body.badgeName;
 
-    if (!updatedPost) return res.status(404).json({ success: false, message: "Post not found" });
-    res.json({ success: true, data: updatedPost });
+    const updatedPost = await existingPost.save();
+
+    res.json({ 
+      success: true, 
+      message: "Smart Deck Updated Successfully! ✅",
+      data: updatedPost 
+    });
+
   } catch (err) {
+    console.error("🚨 Update Deck Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -128,44 +190,83 @@ router.post("/vote/:postId", async (req, res) => {
   }
 });
 
-// ✅ 4. 🔥 COMMAND STATS UPDATE (SRS Logic Fixed)
-router.post("/update-stat/:postId", async (req, res) => {
-  try {
-    const { level, email, nextReview } = req.body;
-    const post = await EnglishPost.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const existingIdx = post.userStats.findIndex(u => u.email === email);
+
+router.post("/vote-word/:postId/:wordId", async (req, res) => {
+  try {
+    const { postId, wordId } = req.params;
+    const { email } = req.body;
+
+    const post = await EnglishPost.findById(postId);
+    const wordEntry = post.vocabData.id(wordId);
+
+    if (!wordEntry) return res.status(404).json({ message: "Word missing" });
+
+    const voteIndex = wordEntry.votedBy.indexOf(email);
+    if (voteIndex > -1) {
+      wordEntry.votedBy.splice(voteIndex, 1);
+    } else {
+      wordEntry.votedBy.push(email);
+    }
+    wordEntry.voteCount = wordEntry.votedBy.length;
+
+    post.markModified('vocabData');
+    await post.save();
+    res.json({ success: true, voteCount: wordEntry.voteCount });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
+  try {
+    const { postId, wordId } = req.params;
+    const { level, email, nextReview } = req.body;
+
+    // 1. Poora post dhundo
+    const post = await EnglishPost.findById(postId);
+    if (!post) return res.status(404).json({ success: false, message: "Post not found" });
+
+    // 2. Deck (vocabData) ke andar wo specific word dhundo
+    const wordEntry = post.vocabData.id(wordId);
     
-    // 🧠 Date conversion wrapper: Essential for time comparison logic
+    // Fallback: Agar purana post hai jisme vocabData nahi hai, toh logic handle karo
+    if (!wordEntry) {
+       return res.status(404).json({ success: false, message: "Word not found in deck" });
+    }
+
+    const existingIdx = wordEntry.wordStats.findIndex(u => u.email === email);
     const reviewDate = nextReview ? new Date(nextReview) : null;
 
     if (existingIdx !== -1) {
-      const oldLevel = post.userStats[existingIdx].level;
+      const oldLevel = wordEntry.wordStats[existingIdx].level;
       
-      // Agar practice se call nahi hai aur level same hai, toh toggle (remove) karo
+      // 🔥 Toggle Logic: Agar wahi button dobara dabaya toh hata do
       if (oldLevel === level && nextReview === undefined) {
-        post.commandStats[level] = Math.max(0, (post.commandStats[level] || 0) - 1);
-        post.userStats.splice(existingIdx, 1);
+        wordEntry.commandStats[level] = Math.max(0, (wordEntry.commandStats[level] || 0) - 1);
+        wordEntry.wordStats.splice(existingIdx, 1);
       } else {
-        // Update existing record
-        post.commandStats[oldLevel] = Math.max(0, (post.commandStats[oldLevel] || 0) - 1);
-        post.commandStats[level] = (post.commandStats[level] || 0) + 1;
-        post.userStats[existingIdx].level = level;
-        post.userStats[existingIdx].nextReview = reviewDate; // ✅ Saving as Date Object
+        // Update Level
+        wordEntry.commandStats[oldLevel] = Math.max(0, (wordEntry.commandStats[oldLevel] || 0) - 1);
+        wordEntry.commandStats[level] = (wordEntry.commandStats[level] || 0) + 1;
+        wordEntry.wordStats[existingIdx].level = level;
+        wordEntry.wordStats[existingIdx].nextReview = reviewDate;
       }
     } else {
-      // Add new record
-      post.commandStats[level] = (post.commandStats[level] || 0) + 1;
-      post.userStats.push({ email, level, nextReview: reviewDate }); // ✅ Saving as Date Object
+      // New Stat Entry
+      wordEntry.commandStats[level] = (wordEntry.commandStats[level] || 0) + 1;
+      wordEntry.wordStats.push({ email, level, nextReview: reviewDate });
     }
 
-    post.markModified('commandStats');
-    post.markModified('userStats'); 
+    // 🔥 Important: Mongoose ko batao ki nested data modify hua hai
+    post.markModified('vocabData');
     await post.save();
-    res.json({ success: true, commandStats: post.commandStats });
+
+    res.json({ success: true, commandStats: wordEntry.commandStats });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("🚨 Stat Update Error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
