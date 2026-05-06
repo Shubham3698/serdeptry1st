@@ -23,48 +23,52 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // =====================
-// Middlewares
+// 🔥 UPDATED Middlewares (CORS FIX)
 // =====================
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:3000",
+  "https://dameeto1st.vercel.app",
+  "https://admintry-mu.vercel.app",
+  "https://dameeto.in",
+  "https://serdeptry1st.onrender.com",
+  "https://www.dameeto.in",
+  "https://english1stcomm.vercel.app"
+];
+
 app.use(cors({
   origin: function (origin, callback) {
-
-    const allowedOrigins = [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://127.0.0.1:3000",
-      "https://dameeto1st.vercel.app",
-      "https://admintry-mu.vercel.app",
-      "https://dameeto.in",
-      "https://serdeptry1st.onrender.com",
-      "https://www.dameeto.in",
-      "https://english1stcomm.vercel.app"
-    ];
-
-    // ✅ allow requests with no origin (like mobile apps, curl, postman)
+    // 1. Allow requests with no origin (mobile apps, curl, postman)
     if (!origin) return callback(null, true);
 
-    // ✅ allow chrome extensions
+    // 2. Allow Chrome Extensions
     if (origin.startsWith("chrome-extension://")) {
       return callback(null, true);
     }
 
-    // ✅ allow whitelisted domains
-    if (allowedOrigins.includes(origin)) {
+    // 3. Allow whitelisted domains OR any Vercel preview branch
+    const isVercelPreview = origin.endsWith(".vercel.app");
+    if (allowedOrigins.includes(origin) || isVercelPreview) {
       return callback(null, true);
     }
 
-    // ❌ block everything else
+    // ❌ Block everything else
+    console.log("❌ CORS Blocked for Origin:", origin);
     return callback(new Error("Not allowed by CORS"));
   },
-
-  methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
+  methods: ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"],
   credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  optionsSuccessStatus: 204
 }));
+
+// Extra Pre-flight handling for complex requests
+app.options("*", cors());
 
 app.use(logger("dev"));
 
-// 🔥 FIX: 413 Error ke liye limit badhayi (Tera original express.json replace kiya)
+// 🔥 413 Error Fix (Original limits kept intact)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: false }));
 
@@ -81,7 +85,7 @@ const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const productRoutes = require("./routes/productRoutes"); 
 const paymentRoutes = require("./routes/paymentRoutes");
 const gameRoutes = require("./routes/gameRoutes");
-const freeGiftRoutes = require("./routes/freeGiftRoutes"); // ✅ Added
+const freeGiftRoutes = require("./routes/freeGiftRoutes");
 const pincodeRoute = require("./routes/pincode");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 
@@ -89,6 +93,7 @@ const englishUsersRouter = require("./routes/englishUsers");
 const englishPostRoutes = require("./routes/englishPostRoutes");
 const engPaymentRoutes = require("./routes/engPaymentRoutes");
 const wordRoutes = require("./routes/wordRoutes");
+
 // =====================
 // Routes Use
 // =====================
@@ -99,10 +104,9 @@ app.use("/api/customer-orders", customerOrderRoutes);
 app.use("/api/payment", paymentRoutes);      
 app.use("/api/products", productRoutes); 
 app.use("/api", gameRoutes);
-app.use("/api/free-gifts", freeGiftRoutes); // ✅ Added
+app.use("/api/free-gifts", freeGiftRoutes);
 app.use("/api", pincodeRoute);
 app.use("/api/wishlist", wishlistRoutes);
-
 
 app.use("/api/english-community/users", englishUsersRouter);
 app.use("/api/english-posts", englishPostRoutes);
