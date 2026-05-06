@@ -2,6 +2,23 @@ const express = require("express");
 const router = express.Router();
 const EnglishUser = require("../models/EnglishUser");
 
+// 🛠️ INTERNAL HELPER: Status check karne ke liye (Sabhi routes ke liye)
+const checkAndGetStatus = async (user) => {
+  const now = new Date();
+  // Agar premium hai aur date nikal chuki hai, toh DB update karo
+  if (user.isPremium && user.premiumExpiry && new Date(user.premiumExpiry) < now) {
+    console.log(`⚠️ Auto-Expiry Triggered: ${user.email}`);
+    user.isPremium = false;
+    user.planType = "free";
+    await user.save();
+  }
+  return {
+    isPremium: user.isPremium || false,
+    planType: user.planType || "free",
+    premiumExpiry: user.premiumExpiry || null
+  };
+};
+
 // ==========================================
 // 🚀 SIGNUP / SYNC (Google & Email Support)
 // ==========================================
@@ -14,34 +31,29 @@ router.post("/signup", async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-
-    // 🔄 Find if user already exists in English Hub collection
     let user = await EnglishUser.findOne({ email: cleanEmail });
 
     if (user) {
-      // ✅ Sync logic (Keep it as is)
       user.firebaseUid = firebaseUid;
-      if (name && name !== "User") user.name = name; 
-      await user.save();
+      if (name && name !== "User") user.name = name;
+      
+      // 🔥 Sync ke waqt bhi check karo (No ghost premium)
+      const statusData = await checkAndGetStatus(user);
       
       return res.status(200).json({
         success: true,
         message: "User synced successfully",
         email: user.email,
         name: user.name,
-        // 🔥 Return premium status during sync
-        isPremium: user.isPremium || false,
-        planType: user.planType || "free"
+        ...statusData // Yeh updated isPremium aur planType bhejega
       });
     }
 
-    // ✨ Naya user create karo (Fresh Join)
     const newUser = new EnglishUser({ 
       name: name || "User", 
       email: cleanEmail, 
       firebaseUid,
       appOrigin: "english-community" 
-      // isPremium and planType will take default values from Schema
     });
     
     await newUser.save();
@@ -81,15 +93,15 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // 🔥 Login ke waqt expiry check karke hi data bhejo
+    const statusData = await checkAndGetStatus(user);
+
     res.status(200).json({
       success: true,
       message: "Login successful",
       email: user.email,
       name: user.name,
-      // 🔥 BHEJO PREMIUM DATA: Isse frontend features unlock honge
-      isPremium: user.isPremium || false,
-      planType: user.planType || "free",
-      premiumExpiry: user.premiumExpiry || null
+      ...statusData
     });
 
   } catch (err) {
@@ -98,22 +110,27 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// Pehle ye tha: router.get("/users/status", ... )
-// Ise ye kar do:
+// ==========================================
+// 🛰️ STATUS CHECK (Real-time Expiry)
+// ==========================================
 router.get("/status", async (req, res) => {
   try {
     const { email } = req.query;
     if (!email) return res.status(400).json({ message: "Email is required" });
 
-    const user = await EnglishUser.findOne({ email: email });
-
+    const user = await EnglishUser.findOne({ email: email.toLowerCase().trim() });
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // 🔥 Real-time check and update
+    const statusData = await checkAndGetStatus(user);
+
     res.json({
-      isPremium: user.isPremium || false,
-      planType: user.planType || "free"
+      success: true,
+      ...statusData
     });
+
   } catch (error) {
+    console.error("Status Route Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
