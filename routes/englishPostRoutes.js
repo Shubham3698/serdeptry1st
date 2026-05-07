@@ -317,16 +317,25 @@ router.delete("/delete/:id", async (req, res) => {
 });
 
 // ✅ 9. GET ALL SAVED POSTS
+// ✅ NAYA WALA (Isse replace karo)
 router.get("/saved", async (req, res) => {
   const { email } = req.query;
   try {
-    const posts = await EnglishPost.find({ "userStats.email": email });
+    // Ye query Smart Deck aur Single words dono dhoond legi
+    const posts = await EnglishPost.find({
+      $or: [
+        { "vocabData.wordStats.email": email },
+        { "userStats.email": email }
+      ]
+    });
+
+    console.log(`✅ Vault Sync: ${posts.length} posts retrieved for ${email}`);
     res.status(200).json(posts);
   } catch (err) {
-    res.status(500).json({ message: "Error fetching saved words", error: err });
+    console.error("🚨 Vault Fetch Error:", err);
+    res.status(500).json({ message: "Error fetching saved words", error: err.message });
   }
 });
-
 // ✅ DELETE COMMENT
 // ✅ DELETE COMMENT (Fixed & Bulletproof)
 router.delete("/comment/:postId/:commentId", async (req, res) => {
@@ -494,7 +503,7 @@ router.get("/get-pronunciation", async (req, res) => {
   }
 });
 
-// ✅ SEARCH LIVE: Optimized with Grammar & Explanation
+// ✅ SEARCH LIVE: Smart Deck Friendly logic
 router.get("/search-live", async (req, res) => {
   try {
     const { q } = req.query;
@@ -503,51 +512,48 @@ router.get("/search-live", async (req, res) => {
     const searchWord = q.trim();
     console.log("🔍 Deep Searching for:", searchWord);
 
-    // 1. Hindi Meaning (Google Translate)
-    let hindiMeaning = "";
-    try {
-      const translation = await translate(searchWord, { to: "hi" });
-      hindiMeaning = translation.text;
-    } catch (e) { hindiMeaning = "Meaning not found"; }
-
-    // 2. Grammar & Explanation (Free Dictionary API)
-    let grammarType = "Vocabulary";
-    let detailedDefinition = "Definition available in community posts.";
-    let examples = [];
-
-    try {
-      // Yahan hum axios use kar rahe hain, declare upar file ke top pe ho chuka hai
-      const dictRes = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`, { timeout: 3000 });
-      if (dictRes.data?.[0]) {
-        const firstEntry = dictRes.data[0];
-        grammarType = firstEntry.meanings[0].partOfSpeech; 
-        detailedDefinition = firstEntry.meanings[0].definitions[0].definition;
-        if (firstEntry.meanings[0].definitions[0].example) {
-          examples = [firstEntry.meanings[0].definitions[0].example];
-        }
-      }
-    } catch (err) {
-      console.log("Dict API error or Word not found, skipping detailed info.");
-    }
-
-    // 3. Database Search (Regex for quotes and fuzzy match)
+    // 1. Database Search (Main Word OR Smart Deck Word)
     const filteredPosts = await EnglishPost.find({
       $or: [
-        { word: { $regex: searchWord, $options: "i" } },
-        { meaning: { $regex: searchWord, $options: "i" } }
+        { word: { $regex: searchWord, $options: "i" } }, // Single Word system
+        { "vocabData.word": { $regex: searchWord, $options: "i" } } // 🔥 Smart Deck Words!
       ]
     }).sort({ createdAt: -1 });
 
-    console.log(`✅ Matches Found in DB: ${filteredPosts.length}`);
+    // 2. Dictionary Info (Dictionary tab ke liye)
+    // Hum Dictionary info tabhi nikalte hain jab word exact match ho ya search word clean ho
+    let dictData = {
+        hindiMeaning: "Meaning not found",
+        grammarType: "Vocabulary",
+        detailedDefinition: "Definition available in community posts.",
+        examples: []
+    };
+
+    try {
+      // Hindi Meaning
+      const translation = await translate(searchWord, { to: "hi" });
+      dictData.hindiMeaning = translation.text;
+
+      // Dictionary API
+      const dictRes = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`);
+      if (dictRes.data?.[0]) {
+        const firstEntry = dictRes.data[0];
+        dictData.grammarType = firstEntry.meanings[0].partOfSpeech; 
+        dictData.detailedDefinition = firstEntry.meanings[0].definitions[0].definition;
+        if (firstEntry.meanings[0].definitions[0].example) {
+          dictData.examples = [firstEntry.meanings[0].definitions[0].example];
+        }
+      }
+    } catch (e) { console.log("External APIs failed/No info found."); }
 
     res.json({
       success: true,
       word: searchWord,
-      meaning: hindiMeaning,
-      grammar: grammarType,
-      definition: detailedDefinition,
-      exampleSentences: examples,
-      relatedPosts: filteredPosts 
+      meaning: dictData.hindiMeaning,
+      grammar: dictData.grammarType,
+      definition: dictData.detailedDefinition,
+      exampleSentences: dictData.examples,
+      relatedPosts: filteredPosts // Ab isme Smart Decks bhi aayenge!
     });
 
   } catch (err) {
