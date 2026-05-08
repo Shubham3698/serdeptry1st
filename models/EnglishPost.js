@@ -6,6 +6,9 @@ const EnglishPostSchema = new mongoose.Schema({
     word: { type: String, required: true },
     meaning: { type: String, required: true },
     
+    // 📝 Individual Word Sentence (Example Usage)
+    sentence: { type: String, default: "" }, 
+    
     // 📸 Har word ki apni individual images/videos
     media: [{
       type: { 
@@ -39,12 +42,13 @@ const EnglishPostSchema = new mongoose.Schema({
     }
   }],
 
-  // ✅ BACKWARD COMPATIBILITY (Purana logic na tute isliye global fields rakhi hain)
+  // ✅ BACKWARD COMPATIBILITY (Global fields for search and legacy logic)
   word: { type: String }, 
   meaning: { type: String },
+  sentence: { type: String, default: "" }, // Global backup for search
   userEmail: { type: String, required: true },
   
-  // Purani single-media posts ke liye
+  // Legacy media support
   media: [{
     type: { type: String, enum: ["image", "video", "embed"] },
     url: { type: String }
@@ -87,22 +91,27 @@ const EnglishPostSchema = new mongoose.Schema({
 });
 
 // ======================================================
-// 🔥 THE MASTER SYNC: Pre-Save Middleware
+// 🔥 THE MASTER SYNC: Pre-Save Middleware (FIXED)
 // ======================================================
+// Note: next() hata diya hai kyunki async function return self-resolve karta hai
 EnglishPostSchema.pre('save', async function() {
   try {
     if (this.vocabData && this.vocabData.length > 0) {
+      const firstCard = this.vocabData[0];
+
       // 1. Deck ke pehle card ko main fields mein copy karo taaki Search na tute
-      this.word = this.vocabData[0].word;
-      this.meaning = this.vocabData[0].meaning;
+      this.word = firstCard.word;
+      this.meaning = firstCard.meaning;
+      this.sentence = firstCard.sentence || ""; 
       
       // 2. Deck ki pehli image ko global cover photo bana do
-      if (this.vocabData[0].media && this.vocabData[0].media.length > 0) {
-        this.image = this.vocabData[0].media[0].url;
+      if (firstCard.media && firstCard.media.length > 0) {
+        this.image = firstCard.media[0].url;
       }
     }
   } catch (err) {
     console.error("🚨 Error in Mongoose Pre-Save Sync:", err);
+    throw err; // Error throw karne se Mongoose save operation cancel kar dega
   }
 });
 

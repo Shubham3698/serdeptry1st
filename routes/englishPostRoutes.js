@@ -29,7 +29,6 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
     const { userEmail, vocabData, mediaMetadata, badgeName } = req.body;
     
-    // 🔥 Safe JSON Parsing
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
@@ -40,36 +39,25 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
 
     let fileIndex = 0;
 
-    // 🔥 SMART MAPPING: Har word ko uski specific images assign karna
-    // Ye logic metadata se check karega ki kaunsi file kis word (vocabIndex) ke liye hai
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
       let wordMedia = [];
-
-      // Is specific word (vIdx) se jude saare media metadata filter karo
       const currentWordMeta = metadata.filter(m => m.vocabIndex === vIdx);
 
       currentWordMeta.forEach((meta) => {
         if (meta.mode === "file") {
-          // Agar file mode hai aur file exist karti hai
           if (files[fileIndex]) {
-            wordMedia.push({ 
-              type: meta.type, 
-              url: files[fileIndex].path // Cloudinary URL
-            });
+            wordMedia.push({ type: meta.type, url: files[fileIndex].path });
             fileIndex++;
           }
         } else if (meta.url) {
-          // Agar direct URL/Link dala hai
-          wordMedia.push({ 
-            type: meta.type, 
-            url: meta.url 
-          });
+          wordMedia.push({ type: meta.type, url: meta.url });
         }
       });
 
       return {
         word: vocab.word,
         meaning: vocab.meaning,
+        sentence: vocab.sentence || "", // 🔥 NEW: Added sentence field
         media: wordMedia
       };
     });
@@ -78,10 +66,8 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       vocabData: finalVocabData,
       userEmail,
       badgeName: badgeName || "Normal",
-      // commandStats auto-initialize honge model defaults se
     });
 
-    // Save post (Middleware global word/image fields apne aap set kar dega)
     await newPost.save();
     
     res.status(201).json({ 
@@ -97,44 +83,35 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
 });
 
 // ✅ 2. UPDATE SMART DECK POST
-// Isme har word ki apni specific media array sync hogi bina purana data (votes) khoiye
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
     const postId = req.params.id;
     const { vocabData, mediaMetadata } = req.body;
     
-    // 1. Existing post fetch karo taaki Votes aur Stats safe rahein
     const existingPost = await EnglishPost.findById(postId);
     if (!existingPost) {
       return res.status(404).json({ success: false, message: "Post not found" });
     }
 
-    // 🔥 Safe Parsing
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
     let fileIndex = 0;
 
-    // 🔥 SMART DECK RE-MAPPING
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
       let wordMedia = [];
-
-      // Is specific card (vocabIndex) ke liye metadata filter karo
       const currentWordMeta = metadata.filter(m => m.vocabIndex === vIdx);
 
       currentWordMeta.forEach((meta) => {
         if (meta.mode === "file") {
           if (files[fileIndex]) {
-            // Agar naya file upload hua hai (Design Studio se ya direct)
             wordMedia.push({ type: meta.type, url: files[fileIndex].path });
             fileIndex++;
           } else if (meta.url) {
-            // Agar file upload nahi hua, toh purana existing URL use karo
             wordMedia.push({ type: meta.type, url: meta.url });
           }
         } else if (meta.url) {
-          // Link/Embed mode wala data
           wordMedia.push({ type: meta.type, url: meta.url });
         }
       });
@@ -142,16 +119,13 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
       return {
         word: vocab.word,
         meaning: vocab.meaning,
+        sentence: vocab.sentence || "", // 🔥 NEW: Added sentence field
         media: wordMedia
       };
     });
 
-    // 🔥 DATA INTEGRITY FIX: 
-    // findByIdAndUpdate use karne ki jagah seedha object modify karke .save() karo
-    // Isse 'pre-save' middleware trigger hoga aur Votes/Stats delete nahi honge.
+    // Object modify karke save karna taaki pre-save middleware chale
     existingPost.vocabData = finalVocabData;
-    
-    // Agar frontend se badgeName ya koi aur field aa rahi hai toh wo bhi update kar sakte ho
     if (req.body.badgeName) existingPost.badgeName = req.body.badgeName;
 
     const updatedPost = await existingPost.save();
