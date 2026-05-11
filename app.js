@@ -94,6 +94,8 @@ const englishPostRoutes = require("./routes/englishPostRoutes");
 const engPaymentRoutes = require("./routes/engPaymentRoutes");
 const wordRoutes = require("./routes/wordRoutes");
 
+const notificationRoutes = require("./routes/notificationRoutes");
+
 // =====================
 // Routes Use
 // =====================
@@ -112,6 +114,7 @@ app.use("/api/english-community/users", englishUsersRouter);
 app.use("/api/english-posts", englishPostRoutes);
 app.use("/api/eng-payment", engPaymentRoutes);
 app.use("/api/words", wordRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // =====================
 // Test Route (Deployment Check)

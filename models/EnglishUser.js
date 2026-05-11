@@ -6,7 +6,10 @@ const EnglishUserSchema = new mongoose.Schema({
   firebaseUid: { type: String, required: true },
   appOrigin: { type: String, default: "english-community" },
   
-  // 🔥 NEW PREMIUM FIELDS (Added without destroying old ones)
+  // 🔥 NOTIFICATION TOKEN (Isse hi notification jayega)
+  fcmToken: { type: String, default: null },
+
+  // 🔥 NEW PREMIUM FIELDS
   isPremium: { type: Boolean, default: false },
   planType: { type: String, default: "free" }, // trial, monthly, yearly
   premiumExpiry: { type: Date, default: null },

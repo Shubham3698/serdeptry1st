@@ -6,6 +6,9 @@ const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const translate = require('google-translate-api-next');
 
+const admin = require("../config/firebaseAdmin");
+const EnglishUser = require("../models/EnglishUser");
+
 // ☁️ CLOUDINARY CONFIGURATION
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
@@ -24,7 +27,28 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// ✅ 1. CREATE SMART DECK POST (Multi-Word + Multi-Media Mapping)
+const sendBlast = async (word) => {
+  try {
+    const users = await EnglishUser.find({ fcmToken: { $exists: true, $ne: null } });
+    const tokens = users.map(u => u.fcmToken);
+
+    if (tokens.length > 0) {
+      const message = {
+        notification: {
+          title: "New Signal Detected! 📡",
+          body: `Fresh vocab added: "${word}". Tap to learn now! 🚀`,
+        },
+        tokens: tokens,
+      };
+      const response = await admin.messaging().sendEachForMulticast(message);
+      console.log(`✅ Notified ${response.successCount} users`);
+    }
+  } catch (err) {
+    console.error("❌ Notification Blast Failed:", err);
+  }
+};
+
+// ✅ Updated Create Route
 router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
     const { userEmail, vocabData, mediaMetadata, badgeName } = req.body;
@@ -38,7 +62,6 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
     }
 
     let fileIndex = 0;
-
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
       let wordMedia = [];
       const currentWordMeta = metadata.filter(m => m.vocabIndex === vIdx);
@@ -57,7 +80,7 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       return {
         word: vocab.word,
         meaning: vocab.meaning,
-        sentence: vocab.sentence || "", // 🔥 NEW: Added sentence field
+        sentence: vocab.sentence || "",
         media: wordMedia
       };
     });
@@ -68,11 +91,17 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       badgeName: badgeName || "Normal",
     });
 
+    // 1️⃣ Save Post to DB
     await newPost.save();
-    
+
+    // 2️⃣ 🔥 BLAST NOTIFICATION (New Logic)
+    // Pehle word ka naam bhej rahe hain notification body mein
+    const firstWord = finalVocabData[0]?.word || "New Deck";
+    sendBlast(firstWord); 
+
     res.status(201).json({ 
       success: true, 
-      message: "Smart Deck Created! 🚀", 
+      message: "Smart Deck Created & Notified! 🚀", 
       data: newPost 
     });
 
@@ -81,6 +110,7 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // ✅ 2. UPDATE SMART DECK POST
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
@@ -481,53 +511,69 @@ router.get("/get-pronunciation", async (req, res) => {
 router.get("/search-live", async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q) return res.status(400).json({ success: false });
+    if (!q) return res.status(400).json({ success: false, message: "Query missing" });
 
     const searchWord = q.trim();
-    console.log("🔍 Deep Searching for:", searchWord);
+    console.log("🔍 Fast Searching for:", searchWord);
 
-    // 1. Database Search (Main Word OR Smart Deck Word)
-    const filteredPosts = await EnglishPost.find({
-      $or: [
-        { word: { $regex: searchWord, $options: "i" } }, // Single Word system
-        { "vocabData.word": { $regex: searchWord, $options: "i" } } // 🔥 Smart Deck Words!
-      ]
-    }).sort({ createdAt: -1 });
+    /**
+     * 1. PARALLEL EXECUTION (Database + Dictionary API + Quick Translation)
+     * Hum teeno kaam ek saath (Parallel) kar rahe hain taaki speed max rahe.
+     * Hum sirf 'searchWord' ko translate kar rahe hain jo ki bohot fast hota hai.
+     */
+    const [filteredPosts, dictApiRes, quickTrans] = await Promise.all([
+      // MongoDB Search (Limit 20 for speed)
+      EnglishPost.find({
+        $or: [
+          { word: { $regex: searchWord, $options: "i" } },
+          { "vocabData.word": { $regex: searchWord, $options: "i" } }
+        ]
+      }).sort({ createdAt: -1 }).limit(20).lean(),
 
-    // 2. Dictionary Info (Dictionary tab ke liye)
-    // Hum Dictionary info tabhi nikalte hain jab word exact match ho ya search word clean ho
+      // External Dictionary API
+      axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`).catch(() => null),
+
+      // Quick Hindi Meaning (Sirf word ka, definition ka nahi)
+      translate(searchWord, { to: 'hi' }).catch(() => ({ text: "" }))
+    ]);
+
+    // Default Object setup
     let dictData = {
-        hindiMeaning: "Meaning not found",
-        grammarType: "Vocabulary",
-        detailedDefinition: "Definition available in community posts.",
-        examples: []
+      grammarType: "Vocabulary",
+      detailedDefinition: "Definition available in community posts.",
+      examples: []
     };
 
-    try {
-      // Hindi Meaning
-      const translation = await translate(searchWord, { to: "hi" });
-      dictData.hindiMeaning = translation.text;
-
-      // Dictionary API
-      const dictRes = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${searchWord}`);
-      if (dictRes.data?.[0]) {
-        const firstEntry = dictRes.data[0];
-        dictData.grammarType = firstEntry.meanings[0].partOfSpeech; 
-        dictData.detailedDefinition = firstEntry.meanings[0].definitions[0].definition;
-        if (firstEntry.meanings[0].definitions[0].example) {
-          dictData.examples = [firstEntry.meanings[0].definitions[0].example];
+    // 2. Dictionary Data Parsing (If API responded)
+    if (dictApiRes && dictApiRes.data?.[0]) {
+      const firstEntry = dictApiRes.data[0];
+      
+      if (firstEntry.meanings?.[0]) {
+        dictData.grammarType = firstEntry.meanings[0].partOfSpeech || "Vocabulary";
+        
+        const firstDef = firstEntry.meanings[0].definitions?.[0];
+        if (firstDef) {
+          dictData.detailedDefinition = firstDef.definition;
+          if (firstDef.example) {
+            dictData.examples = [firstDef.example];
+          }
         }
       }
-    } catch (e) { console.log("External APIs failed/No info found."); }
+    }
 
+    /**
+     * 3. FINAL RESPONSE
+     * 'meaning' mein Hindi word chala gaya (e.g. कुत्ता)
+     * 'definition' abhi bhi English mein hai (Frontend button se translate karega)
+     */
     res.json({
       success: true,
       word: searchWord,
-      meaning: dictData.hindiMeaning,
+      meaning: quickTrans.text, // Ye Screenshot wale style ke niche turant dikhega
       grammar: dictData.grammarType,
       definition: dictData.detailedDefinition,
       exampleSentences: dictData.examples,
-      relatedPosts: filteredPosts // Ab isme Smart Decks bhi aayenge!
+      relatedPosts: filteredPosts // Smart Deck words included
     });
 
   } catch (err) {
