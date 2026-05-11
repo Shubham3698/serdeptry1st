@@ -108,7 +108,7 @@ router.post("/clear-all", async (req, res) => {
     );
     res.json({ success: true, message: "Signals Hub cleared! 🧹" });
   } catch (err) {
-    res.status(500).json({ succe    ss: false });
+    res.status(500).json({ success: false });
   }
 });
 
