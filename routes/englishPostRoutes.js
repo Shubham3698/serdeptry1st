@@ -27,7 +27,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-const sendBlast = async (title, word) => {
+const sendBlast = async (title, word, postId) => { // 🆕 Added postId as 3rd parameter
   try {
     // 1. Sirf un users ko dhundo jinke paas Valid FCM Token hai
     const users = await EnglishUser.find({ 
@@ -39,28 +39,41 @@ const sendBlast = async (title, word) => {
     if (tokens.length > 0) {
       const message = {
         notification: {
-          // ✅ Ab Title dynamic hai (e.g., "5 Slang words for party")
           title: title || "New Signal Detected! 📡", 
-          // ✅ Body mein word highlight hoga
           body: `Focus Word: "${word}". Tap to learn now! 🚀`,
         },
-        // 📱 Android/iOS specific behavior (Optional but good for UX)
+
+        // 🌐 WEB CONFIGURATION (For Chrome & Vercel)
+        webpush: {
+          fcm_options: {
+            // 🔥 Yahan tera sahi Vercel URL hai jo postId ke saath link hoga
+            link: `https://english1stcomm.vercel.app/?postId=${postId}`
+          },
+          notification: {
+            icon: 'https://english1stcomm.vercel.app/logo192.png', // Logo path (Check if correct)
+            badge: 'https://english1stcomm.vercel.app/logo192.png',
+            tag: 'new-signal', // Purani notification replace karne ke liye
+            renotify: true
+          }
+        },
+
+        // 📱 ANDROID CONFIGURATION (Keeping your styling)
         android: {
           notification: {
-            color: '#fbbf24', // Yellow color theme for Dameeto
+            color: '#fbbf24', 
             icon: 'stock_ticker_update',
             clickAction: 'FLUTTER_NOTIFICATION_CLICK',
           },
         },
+
         tokens: tokens,
       };
 
-      // 🚀 Batch-wise notification bhejta hai (Modern method)
+      // 🚀 Batch-wise notification bhejta hai
       const response = await admin.messaging().sendEachForMulticast(message);
       
-      console.log(`✅ Signals Sent: ${response.successCount} users notified.`);
+      console.log(`✅ Signals Sent: ${response.successCount} users notified on Vercel.`);
       
-      // 🚨 Agar kuch tokens expire ho gaye hain toh unhe clean karne ka logic yahan add kar sakte ho
       if (response.failureCount > 0) {
         console.log(`⚠️ Failed to notify ${response.failureCount} devices.`);
       }
@@ -76,20 +89,16 @@ const sendBlast = async (title, word) => {
 // ✅ Updated Create Route
 router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
-    // 🆕 Destructure fields (title ko vocabData se pick karenge)
-    const { userEmail, userName, vocabData, mediaMetadata, badgeName } = req.body;
+    // 🆕 'title' aur 'userName' ko destructure kiya
+    const { userEmail, userName, vocabData, mediaMetadata, badgeName, title } = req.body;
     
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
     if (parsedVocab.length === 0) {
-      return res.status(400).json({ success: false, message: "Bhai, card khali nahi ho sakta!" });
+      return res.status(400).json({ success: false, message: "Bhai, kam se kam ek word toh dalo!" });
     }
-
-    // 🎯 Master Title Logic: 
-    // Card #1 mein jo user ne "Signal Title" dala hai, usey main title banao
-    const masterTitle = parsedVocab[0].title || ""; 
 
     let fileIndex = 0;
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
@@ -110,42 +119,42 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       return {
         word: vocab.word,
         meaning: vocab.meaning,
-        title: vocab.title || "", // Backup card title
         sentence: vocab.sentence || "",
         media: wordMedia
       };
     });
 
-    // 🎯 Step 2: Initialize New Post with Master Title
     const newPost = new EnglishPost({
-      title: masterTitle, // ✅ Card 1 wala asli title yahan gaya
+      title: title, // ✅ Naya Title save ho raha hai
       vocabData: finalVocabData,
       userEmail,
-      userName: userName || userEmail?.split('@')[0],
+      userName: userName || userEmail?.split('@')[0], // ✅ User name fallback
       badgeName: badgeName || "Normal",
     });
 
-    // 🎯 Step 3: DB Save (Triggering Sync Middleware)
+    // 1️⃣ Save Post to DB
+    // (Isse pre-save middleware trigger hoga jo title auto-generate kar dega agar blank hua toh)
     await newPost.save();
 
-    // 🎯 Step 4: Blast Notification with REAL Title
+    // 2️⃣ 🔥 BLAST NOTIFICATION (Updated Logic)
     const firstWord = finalVocabData[0]?.word || "New Deck";
-    const notificationTitle = newPost.title; // Middleware ya card se aya hua asli title
+    const postTitle = newPost.title; // Middleware se generate hua ya frontend se aaya hua title
 
-    // Naya sendBlast call (Dono params ke saath)
-    sendBlast(notificationTitle, firstWord); 
+    // ✅ Naya sendBlast call (Dono params ke saath)
+    sendBlast(postTitle, firstWord); 
 
     res.status(201).json({ 
       success: true, 
-      message: "Smart Deck Created & Signals Notified! 📡🚀", 
+      message: "Smart Deck Created & Notified! 🚀", 
       data: newPost 
     });
 
   } catch (err) {
-    console.error("🚨 Create Deck Critical Error:", err);
+    console.error("🚨 Create Deck Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 // ✅ 2. UPDATE SMART DECK POST
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
