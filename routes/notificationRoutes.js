@@ -34,11 +34,11 @@ const getTimeAgo = (date) => {
 
 // 🎯 Route 2: Latest Notifications (With Filter for Hidden Posts)
 router.get("/latest", async (req, res) => {
-  const { email } = req.query; // User email pass karna zaroori hai filtering ke liye
+  const { email } = req.query; 
   try {
     let hiddenIds = [];
     
-    // 1. Agar user logged in hai, toh uske dismiss kiye hue IDs nikaalo
+    // 1. User ke dismiss kiye hue IDs nikaalo
     if (email) {
       const hiddenRecord = await HiddenSignal.findOne({ userEmail: email });
       if (hiddenRecord) {
@@ -46,18 +46,24 @@ router.get("/latest", async (req, res) => {
       }
     }
 
-    // 2. Posts fetch karo jo hidden list mein NAHI hain ($nin logic)
+    // 2. Filtered posts fetch karo
     const latestPosts = await EnglishPost.find({ _id: { $nin: hiddenIds } })
       .sort({ createdAt: -1 })
       .limit(15);
 
     const signals = latestPosts.map(post => {
+      // ✅ Word fallback logic
       const displayWord = post.word || (post.vocabData && post.vocabData[0]?.word) || "New Post";
+      
+      // ✅ Title fallback logic (Agar title null hai toh 'Vocabulary Update' dikhayega)
+      const displayTitle = post.title || "Vocabulary Update";
+      
       const displayUser = post.userName || (post.userEmail ? post.userEmail.split('@')[0] : "Learner");
 
       return {
         id: post._id.toString(),
         userName: displayUser,
+        title: displayTitle, // 🆕 Title add kar diya
         word: displayWord,
         postId: post._id.toString(),
         time: getTimeAgo(post.createdAt) 
@@ -73,7 +79,6 @@ router.get("/latest", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
 // 🎯 Route 3: Single Signal Dismiss (X Button Logic)
 router.post("/dismiss", async (req, res) => {
   const { email, postId } = req.body;

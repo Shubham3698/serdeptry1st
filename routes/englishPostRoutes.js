@@ -27,39 +27,69 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-const sendBlast = async (word) => {
+const sendBlast = async (title, word) => {
   try {
-    const users = await EnglishUser.find({ fcmToken: { $exists: true, $ne: null } });
+    // 1. Sirf un users ko dhundo jinke paas Valid FCM Token hai
+    const users = await EnglishUser.find({ 
+      fcmToken: { $exists: true, $ne: null, $ne: "" } 
+    });
+    
     const tokens = users.map(u => u.fcmToken);
 
     if (tokens.length > 0) {
       const message = {
         notification: {
-          title: "New Signal Detected! 📡",
-          body: `Fresh vocab added: "${word}". Tap to learn now! 🚀`,
+          // ✅ Ab Title dynamic hai (e.g., "5 Slang words for party")
+          title: title || "New Signal Detected! 📡", 
+          // ✅ Body mein word highlight hoga
+          body: `Focus Word: "${word}". Tap to learn now! 🚀`,
+        },
+        // 📱 Android/iOS specific behavior (Optional but good for UX)
+        android: {
+          notification: {
+            color: '#fbbf24', // Yellow color theme for Dameeto
+            icon: 'stock_ticker_update',
+            clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          },
         },
         tokens: tokens,
       };
+
+      // 🚀 Batch-wise notification bhejta hai (Modern method)
       const response = await admin.messaging().sendEachForMulticast(message);
-      console.log(`✅ Notified ${response.successCount} users`);
+      
+      console.log(`✅ Signals Sent: ${response.successCount} users notified.`);
+      
+      // 🚨 Agar kuch tokens expire ho gaye hain toh unhe clean karne ka logic yahan add kar sakte ho
+      if (response.failureCount > 0) {
+        console.log(`⚠️ Failed to notify ${response.failureCount} devices.`);
+      }
+
+    } else {
+      console.log("ℹ️ No active FCM tokens found in DB.");
     }
   } catch (err) {
-    console.error("❌ Notification Blast Failed:", err);
+    console.error("❌ Notification Blast Failed:", err.message);
   }
 };
 
 // ✅ Updated Create Route
 router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
-    const { userEmail, vocabData, mediaMetadata, badgeName } = req.body;
+    // 🆕 Destructure fields (title ko vocabData se pick karenge)
+    const { userEmail, userName, vocabData, mediaMetadata, badgeName } = req.body;
     
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
     if (parsedVocab.length === 0) {
-      return res.status(400).json({ success: false, message: "Bhai, kam se kam ek word toh dalo!" });
+      return res.status(400).json({ success: false, message: "Bhai, card khali nahi ho sakta!" });
     }
+
+    // 🎯 Master Title Logic: 
+    // Card #1 mein jo user ne "Signal Title" dala hai, usey main title banao
+    const masterTitle = parsedVocab[0].title || ""; 
 
     let fileIndex = 0;
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
@@ -80,43 +110,48 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       return {
         word: vocab.word,
         meaning: vocab.meaning,
+        title: vocab.title || "", // Backup card title
         sentence: vocab.sentence || "",
         media: wordMedia
       };
     });
 
+    // 🎯 Step 2: Initialize New Post with Master Title
     const newPost = new EnglishPost({
+      title: masterTitle, // ✅ Card 1 wala asli title yahan gaya
       vocabData: finalVocabData,
       userEmail,
+      userName: userName || userEmail?.split('@')[0],
       badgeName: badgeName || "Normal",
     });
 
-    // 1️⃣ Save Post to DB
+    // 🎯 Step 3: DB Save (Triggering Sync Middleware)
     await newPost.save();
 
-    // 2️⃣ 🔥 BLAST NOTIFICATION (New Logic)
-    // Pehle word ka naam bhej rahe hain notification body mein
+    // 🎯 Step 4: Blast Notification with REAL Title
     const firstWord = finalVocabData[0]?.word || "New Deck";
-    sendBlast(firstWord); 
+    const notificationTitle = newPost.title; // Middleware ya card se aya hua asli title
+
+    // Naya sendBlast call (Dono params ke saath)
+    sendBlast(notificationTitle, firstWord); 
 
     res.status(201).json({ 
       success: true, 
-      message: "Smart Deck Created & Notified! 🚀", 
+      message: "Smart Deck Created & Signals Notified! 📡🚀", 
       data: newPost 
     });
 
   } catch (err) {
-    console.error("🚨 Create Deck Error:", err);
+    console.error("🚨 Create Deck Critical Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-
 // ✅ 2. UPDATE SMART DECK POST
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
     const postId = req.params.id;
-    const { vocabData, mediaMetadata } = req.body;
+    // 🆕 'title' aur 'userName' ko destructure kiya
+    const { vocabData, mediaMetadata, title, userName, badgeName } = req.body;
     
     const existingPost = await EnglishPost.findById(postId);
     if (!existingPost) {
@@ -149,15 +184,26 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
       return {
         word: vocab.word,
         meaning: vocab.meaning,
-        sentence: vocab.sentence || "", // 🔥 NEW: Added sentence field
+        sentence: vocab.sentence || "",
         media: wordMedia
       };
     });
 
-    // Object modify karke save karna taaki pre-save middleware chale
+    // 🔄 Update Fields
     existingPost.vocabData = finalVocabData;
-    if (req.body.badgeName) existingPost.badgeName = req.body.badgeName;
+    
+    // ✅ Title update logic (Middleware automatic fallback handle kar lega)
+    if (title !== undefined) existingPost.title = title;
+    
+    if (userName) existingPost.userName = userName;
+    if (badgeName) existingPost.badgeName = badgeName;
 
+    /**
+     * 🔥 SAVE triggers Pre-Save Middleware:
+     * 1. Title refresh hoga agar blank hua toh.
+     * 2. firstCard sync hoga (word, meaning, image).
+     * 3. updatedAt timestamp change hoga.
+     */
     const updatedPost = await existingPost.save();
 
     res.json({ 
