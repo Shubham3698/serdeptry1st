@@ -263,17 +263,18 @@ router.post("/vote/:postId", async (req, res) => {
 });
 
 
-
 router.post("/vote-word/:postId/:wordId", async (req, res) => {
   try {
     const { postId, wordId } = req.params;
     const { email } = req.body;
 
     const post = await EnglishPost.findById(postId);
-    const wordEntry = post.vocabData.id(wordId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
+    const wordEntry = post.vocabData.id(wordId);
     if (!wordEntry) return res.status(404).json({ message: "Word missing" });
 
+    // --- 1. CARD LEVEL TOGGLE (Purana logic retained) ---
     const voteIndex = wordEntry.votedBy.indexOf(email);
     if (voteIndex > -1) {
       wordEntry.votedBy.splice(voteIndex, 1);
@@ -282,9 +283,39 @@ router.post("/vote-word/:postId/:wordId", async (req, res) => {
     }
     wordEntry.voteCount = wordEntry.votedBy.length;
 
+    // --- 2. 🔥 MASTER SYNC (Bina purana destroy kiye) ---
+    // Check karo ki kya user ne IS post ke kisi bhi word card par vote kiya hai?
+    const hasVotedAnyWord = post.vocabData.some(v => v.votedBy.includes(email));
+    
+    const mainVoteIdx = post.votedBy.indexOf(email);
+
+    if (hasVotedAnyWord) {
+      // Agar kisi bhi card par vote hai, toh main list mein email hona chahiye (Filter ke liye)
+      if (mainVoteIdx === -1) {
+        post.votedBy.push(email);
+      }
+    } else {
+      // Agar user ne saare cards se apna vote hata diya hai, toh main list se bhi hata do
+      if (mainVoteIdx > -1) {
+        post.votedBy.splice(mainVoteIdx, 1);
+      }
+    }
+
+    // Main count update
+    post.voteCount = post.votedBy.length;
+
+    // --- 3. SAVE & RESPONSE ---
     post.markModified('vocabData');
+    post.markModified('votedBy'); // Ensure Mongoose tracks the array change
+    
     await post.save();
-    res.json({ success: true, voteCount: wordEntry.voteCount });
+    
+    res.json({ 
+      success: true, 
+      voteCount: wordEntry.voteCount, // Card ka count
+      mainVoteCount: post.voteCount  // Poore post ka count
+    });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
