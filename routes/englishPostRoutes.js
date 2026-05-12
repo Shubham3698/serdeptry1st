@@ -27,9 +27,13 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-const sendBlast = async (title, word, postId) => { // 🆕 Added postId as 3rd parameter
+/**
+ * 📡 SEND BLAST: Notifies all active users about a new vocabulary signal.
+ * Redirects web users directly to the specific post on Vercel.
+ */
+const sendBlast = async (title, word, postId) => {
   try {
-    // 1. Sirf un users ko dhundo jinke paas Valid FCM Token hai
+    // 1. Sirf un active users ko dhundo jinke paas valid FCM Token hai
     const users = await EnglishUser.find({ 
       fcmToken: { $exists: true, $ne: null, $ne: "" } 
     });
@@ -39,58 +43,63 @@ const sendBlast = async (title, word, postId) => { // 🆕 Added postId as 3rd p
     if (tokens.length > 0) {
       const message = {
         notification: {
+          // ✅ Dynamic Title (e.g., "Daily Slang Pack")
           title: title || "New Signal Detected! 📡", 
-          body: `Focus Word: "${word}". Tap to learn now! 🚀`,
+          // ✅ Word focus in body
+          body: `Intelligence Update: "${word}". Tap to analyze! 🚀`,
         },
 
-        // 🌐 WEB CONFIGURATION (For Chrome & Vercel)
+        // 🌐 WEB CONFIGURATION (Chrome, Edge, Safari)
         webpush: {
           fcm_options: {
-            // 🔥 Yahan tera sahi Vercel URL hai jo postId ke saath link hoga
+            // 🔥 FIXED REDIRECT: Seedha Vercel link par land karega
             link: `https://english1stcomm.vercel.app/?postId=${postId}`
           },
           notification: {
-            icon: 'https://english1stcomm.vercel.app/logo192.png', // Logo path (Check if correct)
+            icon: 'https://english1stcomm.vercel.app/logo192.png', 
             badge: 'https://english1stcomm.vercel.app/logo192.png',
-            tag: 'new-signal', // Purani notification replace karne ke liye
-            renotify: true
+            tag: 'new-signal', // Purani notifications ko overwrite karega (Clean UX)
+            renotify: true,    // Nayi notification par phone vibrate karega
+            requireInteraction: true // Jab tak user click na kare, notification dikhti rahegi
           }
         },
 
-        // 📱 ANDROID CONFIGURATION (Keeping your styling)
+        // 📱 ANDROID CONFIGURATION (Dameeto Style)
         android: {
+          priority: 'high',
           notification: {
-            color: '#fbbf24', 
+            color: '#fbbf24', // Yellow brand color
             icon: 'stock_ticker_update',
             clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+            sound: 'default'
           },
         },
 
         tokens: tokens,
       };
 
-      // 🚀 Batch-wise notification bhejta hai
+      // 🚀 Multicast delivery (Batch processing)
       const response = await admin.messaging().sendEachForMulticast(message);
       
-      console.log(`✅ Signals Sent: ${response.successCount} users notified on Vercel.`);
+      console.log(`✅ Signals Dispatched: ${response.successCount} users notified on Vercel.`);
       
+      // 🚨 Cleanup logic: Agar tokens invalid hain toh failure count dikhayega
       if (response.failureCount > 0) {
-        console.log(`⚠️ Failed to notify ${response.failureCount} devices.`);
+        console.log(`⚠️ Signal interference: ${response.failureCount} devices failed to receive.`);
       }
 
     } else {
-      console.log("ℹ️ No active FCM tokens found in DB.");
+      console.log("ℹ️ No active signals: 0 FCM tokens found in database.");
     }
   } catch (err) {
-    console.error("❌ Notification Blast Failed:", err.message);
+    console.error("❌ Critical Signal Failure:", err.message);
   }
 };
-
 // ✅ Updated Create Route
 router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
-    // 🆕 'title' aur 'userName' ko destructure kiya
-    const { userEmail, userName, vocabData, mediaMetadata, badgeName, title } = req.body;
+    // 1. Destructure fields (title ko body se nikalne ki koshish mat karo agar wo card ke andar hai)
+    const { userEmail, userName, vocabData, mediaMetadata, badgeName } = req.body;
     
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
@@ -99,6 +108,10 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
     if (parsedVocab.length === 0) {
       return res.status(400).json({ success: false, message: "Bhai, kam se kam ek word toh dalo!" });
     }
+
+    // 🎯 MASTER TITLE LOGIC: 
+    // Pehle card (Index 0) se title uthao jo user ne frontend par dala hai
+    const manualTitle = parsedVocab[0]?.title || ""; 
 
     let fileIndex = 0;
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
@@ -124,24 +137,25 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       };
     });
 
+    // 2. Initialize New Post
     const newPost = new EnglishPost({
-      title: title, // ✅ Naya Title save ho raha hai
+      title: manualTitle, // ✅ Card se aya hua title ab yahan save hoga
       vocabData: finalVocabData,
       userEmail,
-      userName: userName || userEmail?.split('@')[0], // ✅ User name fallback
+      userName: userName || userEmail?.split('@')[0],
       badgeName: badgeName || "Normal",
     });
 
-    // 1️⃣ Save Post to DB
-    // (Isse pre-save middleware trigger hoga jo title auto-generate kar dega agar blank hua toh)
+    // 3. Save Post to DB (Triggering middleware only if title is empty)
     await newPost.save();
 
-    // 2️⃣ 🔥 BLAST NOTIFICATION (Updated Logic)
+    // 4. 🔥 PROFESSIONAL BLAST NOTIFICATION
     const firstWord = finalVocabData[0]?.word || "New Deck";
-    const postTitle = newPost.title; // Middleware se generate hua ya frontend se aaya hua title
+    const postTitle = newPost.title; 
+    const postId = newPost._id.toString(); // 🆕 Link ke liye ID zaruri hai
 
-    // ✅ Naya sendBlast call (Dono params ke saath)
-    sendBlast(postTitle, firstWord); 
+    // ✅ Sahi Blast call: Title, Word, aur PostID ke saath
+    sendBlast(postTitle, firstWord, postId); 
 
     res.status(201).json({ 
       success: true, 
@@ -154,7 +168,6 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 // ✅ 2. UPDATE SMART DECK POST
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
