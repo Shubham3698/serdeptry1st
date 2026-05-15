@@ -9,6 +9,8 @@ const translate = require('google-translate-api-next');
 const admin = require("../config/firebaseAdmin");
 const EnglishUser = require("../models/EnglishUser");
 
+const PersonalVault = require("../models/english/PersonalVault");
+
 // ☁️ CLOUDINARY CONFIGURATION
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
@@ -263,61 +265,97 @@ router.post("/vote/:postId", async (req, res) => {
 });
 
 
-router.post("/vote-word/:postId/:wordId", async (req, res) => {
+router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
   try {
     const { postId, wordId } = req.params;
-    const { email } = req.body;
+    const { level, email, nextReview } = req.body;
 
+    const normalizedEmail = email?.toLowerCase().trim();
+    if (!normalizedEmail) return res.status(400).json({ success: false, message: "Email required" });
+
+    // 1. Post & Word Entry dhundo
     const post = await EnglishPost.findById(postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (!post) return res.status(404).json({ success: false, message: "Post not found" });
 
     const wordEntry = post.vocabData.id(wordId);
-    if (!wordEntry) return res.status(404).json({ message: "Word missing" });
+    if (!wordEntry) return res.status(404).json({ success: false, message: "Word not found in deck" });
 
-    // --- 1. CARD LEVEL TOGGLE (Purana logic retained) ---
-    const voteIndex = wordEntry.votedBy.indexOf(email);
-    if (voteIndex > -1) {
-      wordEntry.votedBy.splice(voteIndex, 1);
-    } else {
-      wordEntry.votedBy.push(email);
-    }
-    wordEntry.voteCount = wordEntry.votedBy.length;
-
-    // --- 2. 🔥 MASTER SYNC (Bina purana destroy kiye) ---
-    // Check karo ki kya user ne IS post ke kisi bhi word card par vote kiya hai?
-    const hasVotedAnyWord = post.vocabData.some(v => v.votedBy.includes(email));
-    
-    const mainVoteIdx = post.votedBy.indexOf(email);
-
-    if (hasVotedAnyWord) {
-      // Agar kisi bhi card par vote hai, toh main list mein email hona chahiye (Filter ke liye)
-      if (mainVoteIdx === -1) {
-        post.votedBy.push(email);
-      }
-    } else {
-      // Agar user ne saare cards se apna vote hata diya hai, toh main list se bhi hata do
-      if (mainVoteIdx > -1) {
-        post.votedBy.splice(mainVoteIdx, 1);
-      }
+    if (!wordEntry.commandStats) {
+      wordEntry.commandStats = { easy: 0, hard: 0, heard: 0, dailyUse: 0 };
     }
 
-    // Main count update
-    post.voteCount = post.votedBy.length;
+    const existingIdx = wordEntry.wordStats.findIndex(u => u.email === normalizedEmail);
+    const reviewDate = nextReview ? new Date(nextReview) : null;
+    let isVoteRemoved = false;
 
-    // --- 3. SAVE & RESPONSE ---
+    // --- HUB LOGIC ---
+    if (existingIdx !== -1) {
+      const oldLevel = wordEntry.wordStats[existingIdx].level;
+      if (oldLevel === level && nextReview === undefined) {
+        wordEntry.commandStats[level] = Math.max(0, (wordEntry.commandStats[level] || 0) - 1);
+        wordEntry.wordStats.splice(existingIdx, 1);
+        isVoteRemoved = true;
+      } else {
+        wordEntry.commandStats[oldLevel] = Math.max(0, (wordEntry.commandStats[oldLevel] || 0) - 1);
+        wordEntry.commandStats[level] = (wordEntry.commandStats[level] || 0) + 1;
+        wordEntry.wordStats[existingIdx].level = level;
+        wordEntry.wordStats[existingIdx].nextReview = reviewDate;
+      }
+    } else {
+      wordEntry.commandStats[level] = (wordEntry.commandStats[level] || 0) + 1;
+      wordEntry.wordStats.push({ email: normalizedEmail, level, nextReview: reviewDate });
+    }
+
     post.markModified('vocabData');
-    post.markModified('votedBy'); // Ensure Mongoose tracks the array change
-    
     await post.save();
-    
-    res.json({ 
-      success: true, 
-      voteCount: wordEntry.voteCount, // Card ka count
-      mainVoteCount: post.voteCount  // Poore post ka count
-    });
+
+    // --- 🔥 VAULT SYNC (PATH FIXED) ---
+    // Yahan hum try-catch ke saath path check kar rahe hain taaki crash na ho
+    let PersonalVault;
+    try {
+      // Option A: Agar models seedha folder mein hai
+      PersonalVault = require("../models/PersonalVault");
+    } catch (e) {
+      try {
+        // Option B: Agar models/english folder mein hai
+        PersonalVault = require("../models/english/PersonalVault");
+      } catch (e2) {
+        console.error("🚨 Path Error: PersonalVault model nahi mila. Please check your folder structure.");
+        throw new Error("PersonalVault model not found");
+      }
+    }
+
+    // PULL - Purani manual ya duplicate entry hatana
+    await PersonalVault.findOneAndUpdate(
+      { userEmail: normalizedEmail },
+      { $pull: { vaultItems: { wordId: wordId } } }
+    );
+
+    // PUSH - Hub vote ke according place karna
+    if (!isVoteRemoved) {
+      await PersonalVault.findOneAndUpdate(
+        { userEmail: normalizedEmail },
+        { 
+          $push: { 
+            vaultItems: { 
+              wordId: wordId,
+              parentPostId: postId,
+              word: wordEntry.word,
+              meaning: wordEntry.meaning,
+              category: level,
+              addedAt: new Date()
+            } 
+          } 
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true, commandStats: wordEntry.commandStats, isVoteRemoved });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("🚨 Stat Sync Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -327,51 +365,95 @@ router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
     const { postId, wordId } = req.params;
     const { level, email, nextReview } = req.body;
 
-    // 1. Poora post dhundo
+    const normalizedEmail = email?.toLowerCase().trim();
+    if (!normalizedEmail) return res.status(400).json({ success: false, message: "Email required" });
+
+    // 1. Post & Word Entry dhundo
     const post = await EnglishPost.findById(postId);
     if (!post) return res.status(404).json({ success: false, message: "Post not found" });
 
-    // 2. Deck (vocabData) ke andar wo specific word dhundo
     const wordEntry = post.vocabData.id(wordId);
-    
-    // Fallback: Agar purana post hai jisme vocabData nahi hai, toh logic handle karo
-    if (!wordEntry) {
-       return res.status(404).json({ success: false, message: "Word not found in deck" });
+    if (!wordEntry) return res.status(404).json({ success: false, message: "Word not found in deck" });
+
+    if (!wordEntry.commandStats) {
+      wordEntry.commandStats = { easy: 0, hard: 0, heard: 0, dailyUse: 0 };
     }
 
-    const existingIdx = wordEntry.wordStats.findIndex(u => u.email === email);
+    const existingIdx = wordEntry.wordStats.findIndex(u => u.email === normalizedEmail);
     const reviewDate = nextReview ? new Date(nextReview) : null;
+    let isVoteRemoved = false;
 
+    // --- HUB LOGIC ---
     if (existingIdx !== -1) {
       const oldLevel = wordEntry.wordStats[existingIdx].level;
-      
-      // 🔥 Toggle Logic: Agar wahi button dobara dabaya toh hata do
       if (oldLevel === level && nextReview === undefined) {
         wordEntry.commandStats[level] = Math.max(0, (wordEntry.commandStats[level] || 0) - 1);
         wordEntry.wordStats.splice(existingIdx, 1);
+        isVoteRemoved = true;
       } else {
-        // Update Level
         wordEntry.commandStats[oldLevel] = Math.max(0, (wordEntry.commandStats[oldLevel] || 0) - 1);
         wordEntry.commandStats[level] = (wordEntry.commandStats[level] || 0) + 1;
         wordEntry.wordStats[existingIdx].level = level;
         wordEntry.wordStats[existingIdx].nextReview = reviewDate;
       }
     } else {
-      // New Stat Entry
       wordEntry.commandStats[level] = (wordEntry.commandStats[level] || 0) + 1;
-      wordEntry.wordStats.push({ email, level, nextReview: reviewDate });
+      wordEntry.wordStats.push({ email: normalizedEmail, level, nextReview: reviewDate });
     }
 
-    // 🔥 Important: Mongoose ko batao ki nested data modify hua hai
     post.markModified('vocabData');
     await post.save();
 
-    res.json({ success: true, commandStats: wordEntry.commandStats });
+    // --- 🔥 VAULT SYNC (PATH FIXED) ---
+    // Yahan hum try-catch ke saath path check kar rahe hain taaki crash na ho
+    let PersonalVault;
+    try {
+      // Option A: Agar models seedha folder mein hai
+      PersonalVault = require("../models/PersonalVault");
+    } catch (e) {
+      try {
+        // Option B: Agar models/english folder mein hai
+        PersonalVault = require("../models/english/PersonalVault");
+      } catch (e2) {
+        console.error("🚨 Path Error: PersonalVault model nahi mila. Please check your folder structure.");
+        throw new Error("PersonalVault model not found");
+      }
+    }
+
+    // PULL - Purani manual ya duplicate entry hatana
+    await PersonalVault.findOneAndUpdate(
+      { userEmail: normalizedEmail },
+      { $pull: { vaultItems: { wordId: wordId } } }
+    );
+
+    // PUSH - Hub vote ke according place karna
+    if (!isVoteRemoved) {
+      await PersonalVault.findOneAndUpdate(
+        { userEmail: normalizedEmail },
+        { 
+          $push: { 
+            vaultItems: { 
+              wordId: wordId,
+              parentPostId: postId,
+              word: wordEntry.word,
+              meaning: wordEntry.meaning,
+              category: level,
+              addedAt: new Date()
+            } 
+          } 
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true, commandStats: wordEntry.commandStats, isVoteRemoved });
+
   } catch (err) {
-    console.error("🚨 Stat Update Error:", err);
+    console.error("🚨 Stat Sync Error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // ✅ 5. GET ALL POSTS
 router.get("/all", async (req, res) => {
