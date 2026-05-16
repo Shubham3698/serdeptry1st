@@ -243,27 +243,45 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
 });
 
 // ✅ 3. 🗳️ VOTE TOGGLE
-router.post("/vote/:postId", async (req, res) => {
+router.post("/vote-word/:postId/:wordId", async (req, res) => {
   try {
+    const { postId, wordId } = req.params;
     const { email } = req.body;
-    const post = await EnglishPost.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const voteIndex = post.votedBy.indexOf(email);
+    if (!email) return res.status(400).json({ message: "Email missing bhai!" });
+
+    const post = await EnglishPost.findById(postId);
+    if (!post) return res.status(404).json({ message: "Post nahi mili!" });
+
+    // 🔥 DECK KE ANDAR WORD DHUNDO
+    const wordEntry = post.vocabData.id(wordId);
+    if (!wordEntry) return res.status(404).json({ message: "Word deck mein nahi hai!" });
+
+    // TOGGLE LOGIC
+    const voteIndex = wordEntry.votedBy.indexOf(email);
     if (voteIndex > -1) {
-      post.votedBy.splice(voteIndex, 1);
+      wordEntry.votedBy.splice(voteIndex, 1); // Unlike
     } else {
-      post.votedBy.push(email);
+      wordEntry.votedBy.push(email); // Like
     }
 
-    post.voteCount = post.votedBy.length;
+    // UPDATE COUNT
+    wordEntry.voteCount = wordEntry.votedBy.length;
+
+    // Save triggers the Pre-save middleware (Jo tune schema mein likha hai)
     await post.save();
-    res.json({ success: true, voteCount: post.voteCount, votedBy: post.votedBy });
+
+    res.json({ 
+      success: true, 
+      voteCount: wordEntry.voteCount, 
+      isVoted: wordEntry.votedBy.includes(email) 
+    });
+
   } catch (err) {
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error(err);
+    res.status(500).json({ message: "Server pe lafda ho gaya!" });
   }
 });
-
 
 router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
   try {
