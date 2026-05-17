@@ -174,34 +174,56 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
     const postId = req.params.id;
-    // 🆕 'title' aur 'userName' ko destructure kiya
     const { vocabData, mediaMetadata, title, userName, badgeName } = req.body;
     
     const existingPost = await EnglishPost.findById(postId);
     if (!existingPost) {
-      return res.status(404).json({ success: false, message: "Post not found" });
+      return res.status(404).json({ success: false, message: "Signal not found in database." });
     }
 
+    // 1. 🛡️ Safe Parsing (JSON handling)
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
-    let fileIndex = 0;
+    // Pehle card se Title uthao jo user ne edit kiya hai, warna purana rehne do
+    const manualTitle = parsedVocab[0]?.title || title || existingPost.title;
 
+    let fileIndex = 0;
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
       let wordMedia = [];
       const currentWordMeta = metadata.filter(m => m.vocabIndex === vIdx);
 
       currentWordMeta.forEach((meta) => {
-        if (meta.mode === "file") {
+        /**
+         * 🔥 THE MASTER LOGIC:
+         * 1. Nayi File: Agar meta.mode 'file' he aur value me HTTP nahi he, matlab ye local selection he.
+         * 2. Existing URL: Agar meta.value ya meta.url me HTTP he, matlab ye Cloudinary ka purana link he.
+         * 3. YouTube: Agar URL me youtube he toh type 'video' automatic hoga.
+         */
+        
+        const isUrlValue = typeof meta.value === 'string' && meta.value.startsWith('http');
+        const isUrlField = typeof meta.url === 'string' && meta.url.startsWith('http');
+
+        if (meta.mode === "file" && !isUrlValue) {
+          // Case: Nayi file upload ki gayi hai
           if (files[fileIndex]) {
-            wordMedia.push({ type: meta.type, url: files[fileIndex].path });
+            wordMedia.push({ 
+              type: meta.type || "image", 
+              url: files[fileIndex].path 
+            });
             fileIndex++;
-          } else if (meta.url) {
-            wordMedia.push({ type: meta.type, url: meta.url });
           }
-        } else if (meta.url) {
-          wordMedia.push({ type: meta.type, url: meta.url });
+        } else {
+          // Case: Purana Cloudinary link he ya YouTube/Network link he
+          const finalUrl = meta.value || meta.url;
+          if (finalUrl) {
+            const isYT = finalUrl.includes('youtube') || finalUrl.includes('youtu.be');
+            wordMedia.push({ 
+              type: isYT ? "video" : (meta.type || "image"), 
+              url: finalUrl 
+            });
+          }
         }
       });
 
@@ -213,35 +235,33 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
       };
     });
 
-    // 🔄 Update Fields
+    // 2. 🔄 Atomic Field Updates
     existingPost.vocabData = finalVocabData;
-    
-    // ✅ Title update logic (Middleware automatic fallback handle kar lega)
-    if (title !== undefined) existingPost.title = title;
+    existingPost.title = manualTitle;
     
     if (userName) existingPost.userName = userName;
     if (badgeName) existingPost.badgeName = badgeName;
 
     /**
-     * 🔥 SAVE triggers Pre-Save Middleware:
-     * 1. Title refresh hoga agar blank hua toh.
-     * 2. firstCard sync hoga (word, meaning, image).
-     * 3. updatedAt timestamp change hoga.
+     * 🔥 SAVE: Ye pre-save middleware trigger karega.
+     * Isse 'word', 'meaning' aur 'image' fields automatic sync ho jayenge first card se.
      */
     const updatedPost = await existingPost.save();
 
     res.json({ 
       success: true, 
-      message: "Smart Deck Updated Successfully! ✅",
+      message: "Intelligence Hub Updated! ✅",
       data: updatedPost 
     });
 
   } catch (err) {
     console.error("🚨 Update Deck Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ 
+      success: false, 
+      message: "Update failed: " + err.message 
+    });
   }
 });
-
 // ✅ 3. 🗳️ VOTE TOGGLE
 router.post("/vote-word/:postId/:wordId", async (req, res) => {
   try {
