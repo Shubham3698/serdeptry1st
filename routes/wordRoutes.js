@@ -5,7 +5,7 @@ const { GoogleGenAI } = require("@google/genai");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 router.post("/define", async (req, res) => {
-  const { word, type } = req.body; // type can be "meaning" or "sentence"
+  const { word, type } = req.body;
 
   if (!word || !word.trim()) {
     return res.status(400).json({ success: false, message: "Word missing hai boss!" });
@@ -14,7 +14,6 @@ router.post("/define", async (req, res) => {
   let promptText = "";
   let jsonSchema = {};
 
-  // Operational Split based on User click focus
   if (type === "meaning") {
     promptText = `You are an elite English vocabulary coach. For the word "${word.trim()}", give the most popular, clear, and extremely easy meaning written completely in Hindi script (Devanagari). Use words that common Indian people use daily.`;
     jsonSchema = {
@@ -31,42 +30,49 @@ router.post("/define", async (req, res) => {
     };
   }
 
-  try {
+  // Helper function execution to loop across models if load spikes occur
+  const tryModelFetch = async (modelName) => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: modelName,
       contents: promptText,
       config: {
         responseMimeType: "application/json",
         responseSchema: jsonSchema
       }
     });
+    return JSON.parse(response.text.trim());
+  };
 
-    const parsedData = JSON.parse(response.text.trim());
-    return res.json({
-      success: true,
-      data: type === "meaning" ? parsedData.meaning : parsedData.sentence
-    });
+  try {
+    // Attempt 1: Gemini 2.5 Flash (Super Fast)
+    console.log("🔄 Attempting 2.5 Flash...");
+    const parsedData = await tryModelFetch("gemini-2.5-flash");
+    return res.json({ success: true, data: type === "meaning" ? parsedData.meaning : parsedData.sentence });
 
   } catch (error) {
-    console.log("⚠️ Flash model busy, hitting 1.5 backup...");
+    console.log("⚠️ 2.5 Flash busy or down, trying 1.5 Flash backup...");
+    
     try {
-      const backupResponse = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: promptText,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: jsonSchema
-        }
-      });
+      // Attempt 2: Gemini 1.5 Flash (Highly Stable)
+      const parsedDataBackup = await tryModelFetch("gemini-1.5-flash");
+      return res.json({ success: true, data: type === "meaning" ? parsedDataBackup.meaning : parsedDataBackup.sentence });
 
-      const parsedDataBackup = JSON.parse(backupResponse.text.trim());
-      return res.json({
-        success: true,
-        data: type === "meaning" ? parsedDataBackup.meaning : parsedDataBackup.sentence
-      });
     } catch (backupError) {
-      console.error("🔥 Gemini Fatal:", backupError);
-      return res.status(503).json({ success: false, message: "Google Server busy!" });
+      console.log("⚠️ 1.5 Flash also rate limited, trying 1.5 Pro structural bypass...");
+      
+      try {
+        // Attempt 3: Gemini 1.5 Pro (Free tier alternate pipeline)
+        const parsedDataPro = await tryModelFetch("gemini-1.5-pro");
+        return res.json({ success: true, data: type === "meaning" ? parsedDataPro.meaning : parsedDataPro.sentence });
+        
+      } catch (proError) {
+        console.error("🔥 All Google AI routes temporary exhausted:", proError);
+        // Returns clean 503 so frontend handles state fallback elegantly
+        return res.status(503).json({ 
+          success: false, 
+          message: "Google Server load peaks par hai bhai. Kripya 5 second baad firse touch karein!" 
+        });
+      }
     }
   }
 });
