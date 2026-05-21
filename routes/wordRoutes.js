@@ -32,7 +32,6 @@ router.post("/define", async (req, res) => {
     };
   }
 
-  // Pure Native Fetch Wrapper for Gemini API
   const callGeminiDirectly = async (modelName) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
     
@@ -56,8 +55,6 @@ router.post("/define", async (req, res) => {
     }
 
     const data = await response.json();
-    
-    // Parse the standard Gemini text response
     const rawText = data.candidates[0].content.parts[0].text;
     return JSON.parse(rawText.trim());
   };
@@ -66,21 +63,24 @@ router.post("/define", async (req, res) => {
     // Attempt 1: Gemini 2.5 Flash
     console.log("🔄 Attempting 2.5 Flash via Direct HTTP...");
     const parsedData = await callGeminiDirectly("gemini-2.5-flash");
-    return res.json({ success: true, data: type === "meaning" ? parsedData.meaning : parsedData.sentence });
+    const finalData = type === "meaning" ? parsedData.meaning : (parsedData.sentence || parsedData.sentences);
+    return res.json({ success: true, data: finalData });
 
   } catch (error) {
-    console.log(`⚠️ 2.5 Flash failed/busy, trying 1.5 Flash backup...`);
+    console.error("❌ 2.5 Flash Failed:", error.message);
+    console.log(`⚠️ Trying Gemini 1.5 Flash 8B (Super Stable Free Tier Alternate)...`);
     
     try {
-      // Attempt 2: Gemini 1.5 Flash
-      const parsedDataBackup = await callGeminiDirectly("gemini-1.5-flash");
-      return res.json({ success: true, data: type === "meaning" ? parsedDataBackup.meaning : parsedDataBackup.sentence });
+      // Attempt 2: Gemini 1.5 Flash 8B (Yeh highly lightweight hai aur free key par easily chalta hai)
+      const parsedDataBackup = await callGeminiDirectly("gemini-1.5-flash-8b");
+      const finalDataBackup = type === "meaning" ? parsedDataBackup.meaning : (parsedDataBackup.sentence || parsedDataBackup.sentences);
+      return res.json({ success: true, data: finalDataBackup });
 
     } catch (backupError) {
-      console.log("🔥 Both models failed direct network call.");
+      console.error("🔥 All free tier pipelines exhausted:", backupError.message);
       return res.status(503).json({ 
         success: false, 
-        message: "Google AI server abhi busy hai. Kripya 3-5 second baad firse try karein!" 
+        message: "Google API temporary rate-limited hai. 5 second baad firse click karein!" 
       });
     }
   }
