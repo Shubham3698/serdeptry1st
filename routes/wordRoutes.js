@@ -1,22 +1,28 @@
 const express = require("express");
 const router = express.Router();
-const axios = require("axios"); // Axios import kiya safely
+const axios = require("axios");
 
 router.post("/define", async (req, res) => {
   const { word, type } = req.body;
 
+  // 1. Basic Validation
   if (!word || !word.trim()) {
-    return res.status(400).json({ success: false, message: "Word missing hai boss!" });
+    return res.status(400).json({ success: false, message: "Word missing hai boss! ✍️" });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  // 2. Fetch API Key and Sanitize
+  let apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ success: false, message: "Server error: GEMINI_API_KEY missing in Env configuration." });
+    return res.status(500).json({ success: false, message: "Server configuration error: GEMINI_API_KEY missing in .env" });
   }
+  
+  // Key ke aage-piche se saare hidden spaces, invisible characters aur quotes hatane ke liye
+  apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
   let promptText = "";
   let jsonSchema = {};
 
+  // 3. Setup Prompt and Schema based on Type
   if (type === "meaning") {
     promptText = `You are an elite English vocabulary coach. For the word "${word.trim()}", give the most popular, clear, and extremely easy meaning written completely in Hindi script (Devanagari). Use words that common Indian people use daily.`;
     jsonSchema = {
@@ -33,9 +39,12 @@ router.post("/define", async (req, res) => {
     };
   }
 
-  // Axios based network caller configuration
-  const callGeminiDirectly = async (modelName) => {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  // 4. Axios Request to Google Gemini Matrix
+  try {
+    console.log("🔄 Contacting Google Gemini 2.5 Flash Network Matrix...");
+    
+    const queryParams = new URLSearchParams({ key: apiKey });
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?" + queryParams.toString();
     
     const payload = {
       contents: [{ parts: [{ text: promptText }] }],
@@ -51,45 +60,23 @@ router.post("/define", async (req, res) => {
 
     if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
       const rawText = response.data.candidates[0].content.parts[0].text;
-      return JSON.parse(rawText.trim());
+      const parsedData = JSON.parse(rawText.trim());
+      
+      const finalData = type === "meaning" ? parsedData.meaning : (parsedData.sentence || parsedData.sentences);
+      return res.json({ success: true, data: finalData });
     } else {
-      throw new Error("Invalid response format from Google API structure.");
+      throw new Error("Invalid structure response from Google Cluster Node.");
     }
-  };
-
-  try {
-    // Attempt 1: Gemini 2.5 Flash
-    console.log("🔄 Attempting 2.5 Flash via Axios Network Call...");
-    const parsedData = await callGeminiDirectly("gemini-2.5-flash");
-    const finalData = type === "meaning" ? parsedData.meaning : (parsedData.sentence || parsedData.sentences);
-    return res.json({ success: true, data: finalData });
 
   } catch (error) {
-    // Extract actual response details safely from Axios metrics
     const statusCode = error.response ? error.response.status : "Local Context";
     const errorDetails = error.response ? JSON.stringify(error.response.data) : error.message;
     
-    console.error(`❌ 2.5 Flash Failed [Status ${statusCode}]:`, errorDetails);
-    console.log(`⚠️ Falling back to Gemini 1.5 Flash 8B core...`);
-    
-    try {
-      // Attempt 2: Gemini 1.5 Flash 8b
-      const parsedDataBackup = await callGeminiDirectly("gemini-1.5-flash-8b");
-      const finalDataBackup = type === "meaning" ? parsedDataBackup.meaning : (parsedDataBackup.sentence || parsedDataBackup.sentences);
-      return res.json({ success: true, data: finalDataBackup });
-
-    } catch (backupError) {
-      const backupStatusCode = backupError.response ? backupError.response.status : "Local Context";
-      const backupDetails = backupError.response ? JSON.stringify(backupError.response.data) : backupError.message;
-      
-      console.error(`❌ 1.5 Flash 8B Failed [Status ${backupStatusCode}]:`, backupDetails);
-      console.log("🔥 All free tier engine pools failed.");
-      
-      return res.status(503).json({ 
-        success: false, 
-        message: "Google Server load peak par hai ya key limited hai. Please thodi der baad try karein!" 
-      });
-    }
+    console.error("❌ Gemini Engine Failed [Status " + statusCode + "]:", errorDetails);
+    return res.status(503).json({ 
+      success: false, 
+      message: "Google Server load par hai ya daily quota exhausted hai. Key change karein!" 
+    });
   }
 });
 
