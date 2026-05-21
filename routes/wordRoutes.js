@@ -30,7 +30,7 @@ router.post("/define", async (req, res) => {
     };
   }
 
-  // Helper function execution to loop across models if load spikes occur
+  // Common helper function for clean calling
   const tryModelFetch = async (modelName) => {
     const response = await ai.models.generateContent({
       model: modelName,
@@ -44,33 +44,34 @@ router.post("/define", async (req, res) => {
   };
 
   try {
-    // Attempt 1: Gemini 2.5 Flash (Super Fast)
+    // Attempt 1: Gemini 2.5 Flash (Pehele priority, super fast)
     console.log("🔄 Attempting 2.5 Flash...");
     const parsedData = await tryModelFetch("gemini-2.5-flash");
     return res.json({ success: true, data: type === "meaning" ? parsedData.meaning : parsedData.sentence });
 
   } catch (error) {
-    console.log("⚠️ 2.5 Flash busy or down, trying 1.5 Flash backup...");
+    console.log("⚠️ 2.5 Flash busy, trying 1.5 Flash backup...");
     
     try {
-      // Attempt 2: Gemini 1.5 Flash (Highly Stable)
+      // Attempt 2: Gemini 1.5 Flash (Yeh API Key par 100% chalta hai aur stable hai)
       const parsedDataBackup = await tryModelFetch("gemini-1.5-flash");
       return res.json({ success: true, data: type === "meaning" ? parsedDataBackup.meaning : parsedDataBackup.sentence });
 
     } catch (backupError) {
-      console.log("⚠️ 1.5 Flash also rate limited, trying 1.5 Pro structural bypass...");
+      console.log("⚠️ 1.5 Flash rate limited, trying 2.0 Flash Exp pool...");
       
       try {
-        // Attempt 3: Gemini 1.5 Pro (Free tier alternate pipeline)
-        const parsedDataPro = await tryModelFetch("gemini-1.5-pro");
-        return res.json({ success: true, data: type === "meaning" ? parsedDataPro.meaning : parsedDataPro.sentence });
+        // Attempt 3: Gemini 2.0 Flash Exp (Normal API Key supported alternate pool)
+        const parsedDataExp = await tryModelFetch("gemini-2.0-flash-exp");
+        return res.json({ success: true, data: type === "meaning" ? parsedDataExp.meaning : parsedDataExp.sentence });
+
+      } catch (expError) {
+        console.error("🔥 All Google AI Free Key routes temporary exhausted:", expError);
         
-      } catch (proError) {
-        console.error("🔥 All Google AI routes temporary exhausted:", proError);
-        // Returns clean 503 so frontend handles state fallback elegantly
+        // Final response jab bilkul hi server dead ho
         return res.status(503).json({ 
           success: false, 
-          message: "Google Server load peaks par hai bhai. Kripya 5 second baad firse touch karein!" 
+          message: "Google API Server abhi bohot heavy load par hai. Kripya 5 second baad firse click karein!" 
         });
       }
     }
