@@ -1,14 +1,16 @@
 const express = require("express");
 const router = express.Router();
-const { GoogleGenAI } = require("@google/genai");
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 router.post("/define", async (req, res) => {
   const { word, type } = req.body;
 
   if (!word || !word.trim()) {
     return res.status(400).json({ success: false, message: "Word missing hai boss!" });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ success: false, message: "Server configuration error: API Key missing." });
   }
 
   let promptText = "";
@@ -30,50 +32,56 @@ router.post("/define", async (req, res) => {
     };
   }
 
-  // Common helper function for clean calling
-  const tryModelFetch = async (modelName) => {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: promptText,
-      config: {
+  // Pure Native Fetch Wrapper for Gemini API
+  const callGeminiDirectly = async (modelName) => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    
+    const payload = {
+      contents: [{ parts: [{ text: promptText }] }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: jsonSchema
       }
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
-    return JSON.parse(response.text.trim());
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Google API Error [${response.status}]: ${JSON.stringify(errorData)}`);
+    }
+
+    const data = await response.json();
+    
+    // Parse the standard Gemini text response
+    const rawText = data.candidates[0].content.parts[0].text;
+    return JSON.parse(rawText.trim());
   };
 
   try {
-    // Attempt 1: Gemini 2.5 Flash (Pehele priority, super fast)
-    console.log("🔄 Attempting 2.5 Flash...");
-    const parsedData = await tryModelFetch("gemini-2.5-flash");
+    // Attempt 1: Gemini 2.5 Flash
+    console.log("🔄 Attempting 2.5 Flash via Direct HTTP...");
+    const parsedData = await callGeminiDirectly("gemini-2.5-flash");
     return res.json({ success: true, data: type === "meaning" ? parsedData.meaning : parsedData.sentence });
 
   } catch (error) {
-    console.log("⚠️ 2.5 Flash busy, trying 1.5 Flash backup...");
+    console.log(`⚠️ 2.5 Flash failed/busy, trying 1.5 Flash backup...`);
     
     try {
-      // Attempt 2: Gemini 1.5 Flash (Yeh API Key par 100% chalta hai aur stable hai)
-      const parsedDataBackup = await tryModelFetch("gemini-1.5-flash");
+      // Attempt 2: Gemini 1.5 Flash
+      const parsedDataBackup = await callGeminiDirectly("gemini-1.5-flash");
       return res.json({ success: true, data: type === "meaning" ? parsedDataBackup.meaning : parsedDataBackup.sentence });
 
     } catch (backupError) {
-      console.log("⚠️ 1.5 Flash rate limited, trying 2.0 Flash Exp pool...");
-      
-      try {
-        // Attempt 3: Gemini 2.0 Flash Exp (Normal API Key supported alternate pool)
-        const parsedDataExp = await tryModelFetch("gemini-2.0-flash-exp");
-        return res.json({ success: true, data: type === "meaning" ? parsedDataExp.meaning : parsedDataExp.sentence });
-
-      } catch (expError) {
-        console.error("🔥 All Google AI Free Key routes temporary exhausted:", expError);
-        
-        // Final response jab bilkul hi server dead ho
-        return res.status(503).json({ 
-          success: false, 
-          message: "Google API Server abhi bohot heavy load par hai. Kripya 5 second baad firse click karein!" 
-        });
-      }
+      console.log("🔥 Both models failed direct network call.");
+      return res.status(503).json({ 
+        success: false, 
+        message: "Google AI server abhi busy hai. Kripya 3-5 second baad firse try karein!" 
+      });
     }
   }
 });
