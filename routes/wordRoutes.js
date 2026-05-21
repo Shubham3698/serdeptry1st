@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const axios = require("axios"); // Axios import kiya safely
 
 router.post("/define", async (req, res) => {
   const { word, type } = req.body;
@@ -10,7 +11,7 @@ router.post("/define", async (req, res) => {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ success: false, message: "Server configuration error: API Key missing." });
+    return res.status(500).json({ success: false, message: "Server error: GEMINI_API_KEY missing in Env configuration." });
   }
 
   let promptText = "";
@@ -32,6 +33,7 @@ router.post("/define", async (req, res) => {
     };
   }
 
+  // Axios based network caller configuration
   const callGeminiDirectly = async (modelName) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
     
@@ -43,56 +45,50 @@ router.post("/define", async (req, res) => {
       }
     };
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+    const response = await axios.post(url, payload, {
+      headers: { "Content-Type": "application/json" }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Google API Error [${response.status}]: ${JSON.stringify(errorData)}`);
+    if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
+      const rawText = response.data.candidates[0].content.parts[0].text;
+      return JSON.parse(rawText.trim());
+    } else {
+      throw new Error("Invalid response format from Google API structure.");
     }
-
-    const data = await response.json();
-    const rawText = data.candidates[0].content.parts[0].text;
-    return JSON.parse(rawText.trim());
   };
 
   try {
     // Attempt 1: Gemini 2.5 Flash
-    console.log("🔄 Attempting 2.5 Flash via Direct HTTP...");
+    console.log("🔄 Attempting 2.5 Flash via Axios Network Call...");
     const parsedData = await callGeminiDirectly("gemini-2.5-flash");
     const finalData = type === "meaning" ? parsedData.meaning : (parsedData.sentence || parsedData.sentences);
     return res.json({ success: true, data: finalData });
 
   } catch (error) {
-    console.error("❌ 2.5 Flash Failed:", error.message);
-    console.log(`⚠️ Trying 2.0 Flash stable pool wrapper...`);
+    // Extract actual response details safely from Axios metrics
+    const statusCode = error.response ? error.response.status : "Local Context";
+    const errorDetails = error.response ? JSON.stringify(error.response.data) : error.message;
+    
+    console.error(`❌ 2.5 Flash Failed [Status ${statusCode}]:`, errorDetails);
+    console.log(`⚠️ Falling back to Gemini 1.5 Flash 8B core...`);
     
     try {
-      // Attempt 2: Gemini 2.0 Flash (Alag free limit tier aur 100% active endpoint)
-      const parsedDataBackup = await callGeminiDirectly("gemini-2.0-flash");
+      // Attempt 2: Gemini 1.5 Flash 8b
+      const parsedDataBackup = await callGeminiDirectly("gemini-1.5-flash-8b");
       const finalDataBackup = type === "meaning" ? parsedDataBackup.meaning : (parsedDataBackup.sentence || parsedDataBackup.sentences);
       return res.json({ success: true, data: finalDataBackup });
 
     } catch (backupError) {
-      console.error("❌ 2.0 Flash Failed:", backupError.message);
-      console.log("⚠️ Trying Gemini 2.0 Flash Experimental pool...");
-
-      try {
-        // Attempt 3: Gemini 2.0 Flash Exp (Bypass quota restrictions via test pipeline)
-        const parsedDataExp = await callGeminiDirectly("gemini-2.0-flash-exp");
-        const finalDataExp = type === "meaning" ? parsedDataExp.meaning : (parsedDataExp.sentence || parsedDataExp.sentences);
-        return res.json({ success: true, data: finalDataExp });
-
-      } catch (expError) {
-        console.error("🔥 All free tier pipelines exhausted:", expError.message);
-        return res.status(503).json({ 
-          success: false, 
-          message: "Aapka daily free limit khatam ho gya hai ya Google side down hai. Please thodi der baad try karein!" 
-        });
-      }
+      const backupStatusCode = backupError.response ? backupError.response.status : "Local Context";
+      const backupDetails = backupError.response ? JSON.stringify(backupError.response.data) : backupError.message;
+      
+      console.error(`❌ 1.5 Flash 8B Failed [Status ${backupStatusCode}]:`, backupDetails);
+      console.log("🔥 All free tier engine pools failed.");
+      
+      return res.status(503).json({ 
+        success: false, 
+        message: "Google Server load peak par hai ya key limited hai. Please thodi der baad try karein!" 
+      });
     }
   }
 });
