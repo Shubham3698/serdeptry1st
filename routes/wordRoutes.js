@@ -68,20 +68,31 @@ router.post("/define", async (req, res) => {
 
   } catch (error) {
     console.error("❌ 2.5 Flash Failed:", error.message);
-    console.log(`⚠️ Trying Gemini 1.5 Flash 8B (Super Stable Free Tier Alternate)...`);
+    console.log(`⚠️ Trying 2.0 Flash stable pool wrapper...`);
     
     try {
-      // Attempt 2: Gemini 1.5 Flash 8B (Yeh highly lightweight hai aur free key par easily chalta hai)
-      const parsedDataBackup = await callGeminiDirectly("gemini-1.5-flash-8b");
+      // Attempt 2: Gemini 2.0 Flash (Alag free limit tier aur 100% active endpoint)
+      const parsedDataBackup = await callGeminiDirectly("gemini-2.0-flash");
       const finalDataBackup = type === "meaning" ? parsedDataBackup.meaning : (parsedDataBackup.sentence || parsedDataBackup.sentences);
       return res.json({ success: true, data: finalDataBackup });
 
     } catch (backupError) {
-      console.error("🔥 All free tier pipelines exhausted:", backupError.message);
-      return res.status(503).json({ 
-        success: false, 
-        message: "Google API temporary rate-limited hai. 5 second baad firse click karein!" 
-      });
+      console.error("❌ 2.0 Flash Failed:", backupError.message);
+      console.log("⚠️ Trying Gemini 2.0 Flash Experimental pool...");
+
+      try {
+        // Attempt 3: Gemini 2.0 Flash Exp (Bypass quota restrictions via test pipeline)
+        const parsedDataExp = await callGeminiDirectly("gemini-2.0-flash-exp");
+        const finalDataExp = type === "meaning" ? parsedDataExp.meaning : (parsedDataExp.sentence || parsedDataExp.sentences);
+        return res.json({ success: true, data: finalDataExp });
+
+      } catch (expError) {
+        console.error("🔥 All free tier pipelines exhausted:", expError.message);
+        return res.status(503).json({ 
+          success: false, 
+          message: "Aapka daily free limit khatam ho gya hai ya Google side down hai. Please thodi der baad try karein!" 
+        });
+      }
     }
   }
 });
