@@ -1,48 +1,43 @@
 const express = require("express");
 const router = express.Router();
 const axios = require("axios");
+const Vocab = require("../models/Word");
 
+// 🔥 ROUTE 1: Word Analyze karna aur DB me automatically save karna
 router.post("/define", async (req, res) => {
-  const { word, type } = req.body;
+  const { word, userId } = req.body;
 
-  // 1. Basic Validation
   if (!word || !word.trim()) {
     return res.status(400).json({ success: false, message: "Word missing hai boss! ✍️" });
   }
+  if (!userId) {
+    return res.status(400).json({ success: false, message: "User session identification missing!" });
+  }
 
-  // 2. Fetch API Key and Sanitize
   let apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ success: false, message: "Server configuration error: GEMINI_API_KEY missing in .env" });
+    return res.status(500).json({ success: false, message: "Server error: GEMINI_API_KEY missing." });
   }
-  
-  // Key ke aage-piche se saare hidden spaces, invisible characters aur quotes hatane ke liye
   apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
-  let promptText = "";
-  let jsonSchema = {};
+  // Unified clean prompt text
+  const promptText = `You are an elite English vocabulary coach. Analyze the word "${word.trim()}".
+  Provide the following details in a strict JSON object matching the structure below:
+  1. "meaning": The most popular, clear, and extremely easy meaning written completely in Hindi script (Devanagari).
+  2. "sentences": Exactly 3 practical everyday example sentences. Below each English sentence, write its Hindi translation inside brackets (). Use newlines (\\n) between separate examples.`;
 
-  // 3. Setup Prompt and Schema based on Type
-  if (type === "meaning") {
-    promptText = `You are an elite English vocabulary coach. For the word "${word.trim()}", give the most popular, clear, and extremely easy meaning written completely in Hindi script (Devanagari). Use words that common Indian people use daily.`;
-    jsonSchema = {
-      type: "OBJECT",
-      properties: { meaning: { type: "STRING" } },
-      required: ["meaning"]
-    };
-  } else if (type === "sentence") {
-    promptText = `You are an elite English vocabulary coach. For the word "${word.trim()}", provide exactly 3 to 4 factual, highly practical example sentences used in normal daily life. Below each English sentence, write its Hindi translation in brackets. Use newlines between separate examples.`;
-    jsonSchema = {
-      type: "OBJECT",
-      properties: { sentence: { type: "STRING" } },
-      required: ["sentence"]
-    };
-  }
+  // 🔥 SIMPLIFIED kompatible Schema structure for Gemini 400 Bad Request fix
+  const jsonSchema = {
+    type: "object",
+    properties: {
+      meaning: { type: "string" },
+      sentences: { type: "string" }
+    },
+    required: ["meaning", "sentences"]
+  };
 
-  // 4. Axios Request to Google Gemini Matrix
   try {
-    console.log("🔄 Contacting Google Gemini 2.5 Flash Network Matrix...");
-    
+    console.log(`🔄 Contacting Google Gemini Matrix for: ${word.trim()}...`);
     const queryParams = new URLSearchParams({ key: apiKey });
     const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?" + queryParams.toString();
     
@@ -50,33 +45,62 @@ router.post("/define", async (req, res) => {
       contents: [{ parts: [{ text: promptText }] }],
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: jsonSchema
+        responseSchema: jsonSchema // Binds clean structure
       }
     };
 
-    const response = await axios.post(url, payload, {
-      headers: { "Content-Type": "application/json" }
-    });
+    const response = await axios.post(url, payload, { headers: { "Content-Type": "application/json" } });
 
     if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
       const rawText = response.data.candidates[0].content.parts[0].text;
       const parsedData = JSON.parse(rawText.trim());
-      
-      const finalData = type === "meaning" ? parsedData.meaning : (parsedData.sentence || parsedData.sentences);
-      return res.json({ success: true, data: finalData });
+
+      const targetWord = word.trim().toLowerCase();
+
+      // DB Duplicate cleaner
+      await Vocab.deleteOne({ userId, word: targetWord });
+
+      // Saving directly to user account cluster
+      const newVocabEntry = new Vocab({
+        userId,
+        word: targetWord,
+        meaning: parsedData.meaning,
+        sentences: parsedData.sentences
+      });
+      await newVocabEntry.save();
+
+      return res.json({ 
+        success: true, 
+        data: {
+          word: targetWord,
+          meaning: parsedData.meaning,
+          sentences: parsedData.sentences
+        }
+      });
     } else {
-      throw new Error("Invalid structure response from Google Cluster Node.");
+      throw new Error("Invalid structure from Gemini Cluster.");
     }
 
   } catch (error) {
-    const statusCode = error.response ? error.response.status : "Local Context";
     const errorDetails = error.response ? JSON.stringify(error.response.data) : error.message;
+    console.error("❌ Gemini Engine Failed:", errorDetails);
     
-    console.error("❌ Gemini Engine Failed [Status " + statusCode + "]:", errorDetails);
     return res.status(503).json({ 
       success: false, 
-      message: "Google Server load par hai ya daily quota exhausted hai. Key change karein!" 
+      message: "Google Pipeline standard validation alert! Check schema or parameters." 
     });
+  }
+});
+
+// 🔥 ROUTE 2: User account ki history MongoDB se nikalna
+router.get("/history/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const userHistory = await Vocab.find({ userId }).sort({ createdAt: -1 }).limit(10);
+    return res.json({ success: true, data: userHistory });
+  } catch (error) {
+    console.error("❌ History fetch failed:", error.message);
+    return res.status(500).json({ success: false, message: "Database se history nahi nikal paayi!" });
   }
 });
 
