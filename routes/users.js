@@ -78,5 +78,26 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error during login" });
   }
 });
+// routes/user.js ya jahan bhi auth routes hain
+router.post("/check-phone", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    // DB mein check karo ki ye number ya is number wali email exist karti hai?
+    const user = await User.findOne({ 
+      $or: [
+        { phone: phone }, 
+        { email: phone + "@phone.com" }
+      ] 
+    });
 
+    if (user) {
+      return res.status(200).json({ exists: true });
+    }
+    // Agar user nahi mila toh 200 hi bhejna hai, bas exists: false kar do
+    res.status(200).json({ exists: false });
+  } catch (err) {
+    console.error("Check Phone Error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 module.exports = router;
