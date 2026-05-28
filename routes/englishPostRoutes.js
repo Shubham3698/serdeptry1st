@@ -100,8 +100,8 @@ const sendBlast = async (title, word, postId) => {
 // ✅ Updated Create Route
 router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
-    // 1. Destructure fields (title ko body se nikalne ki koshish mat karo agar wo card ke andar hai)
-    const { userEmail, userName, vocabData, mediaMetadata, badgeName } = req.body;
+    // 🔥 FIX 1: 'title' ko bhi req.body se receive kiya (Ultimate Deck Title)
+    const { userEmail, userName, vocabData, mediaMetadata, badgeName, title } = req.body;
     
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
@@ -112,8 +112,8 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
     }
 
     // 🎯 MASTER TITLE LOGIC: 
-    // Pehle card (Index 0) se title uthao jo user ne frontend par dala hai
-    const manualTitle = parsedVocab[0]?.title || ""; 
+    // Pehle direct req.body.title dekho, warna card ka title, warna default
+    const manualTitle = title || parsedVocab[0]?.title || "New Deck"; 
 
     let fileIndex = 0;
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
@@ -132,6 +132,7 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       });
 
       return {
+        title: vocab.title || "", // 🔥 FIX 2: Individual Card ka title database mein jayega
         word: vocab.word,
         meaning: vocab.meaning,
         sentence: vocab.sentence || "",
@@ -141,20 +142,20 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
 
     // 2. Initialize New Post
     const newPost = new EnglishPost({
-      title: manualTitle, // ✅ Card se aya hua title ab yahan save hoga
+      title: manualTitle, // ✅ Ultimate Title saved here
       vocabData: finalVocabData,
       userEmail,
       userName: userName || userEmail?.split('@')[0],
       badgeName: badgeName || "Normal",
     });
 
-    // 3. Save Post to DB (Triggering middleware only if title is empty)
+    // 3. Save Post to DB (Triggering middleware)
     await newPost.save();
 
     // 4. 🔥 PROFESSIONAL BLAST NOTIFICATION
     const firstWord = finalVocabData[0]?.word || "New Deck";
     const postTitle = newPost.title; 
-    const postId = newPost._id.toString(); // 🆕 Link ke liye ID zaruri hai
+    const postId = newPost._id.toString(); 
 
     // ✅ Sahi Blast call: Title, Word, aur PostID ke saath
     sendBlast(postTitle, firstWord, postId); 
@@ -174,6 +175,7 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
 router.put("/update/:id", upload.array("images", 20), async (req, res) => {
   try {
     const postId = req.params.id;
+    // 🔥 FIX 1: 'title' recieve karna zaroori hai update form se
     const { vocabData, mediaMetadata, title, userName, badgeName } = req.body;
     
     const existingPost = await EnglishPost.findById(postId);
@@ -186,8 +188,8 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
     const metadata = mediaMetadata ? JSON.parse(mediaMetadata) : [];
     const files = req.files || [];
 
-    // Pehle card se Title uthao jo user ne edit kiya hai, warna purana rehne do
-    const manualTitle = parsedVocab[0]?.title || title || existingPost.title;
+    // 🔥 Root title update: Agar user ne naya bheja hai toh wo, warna purana database wala
+    const manualTitle = title || existingPost.title;
 
     let fileIndex = 0;
     const finalVocabData = parsedVocab.map((vocab, vIdx) => {
@@ -196,17 +198,12 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
 
       currentWordMeta.forEach((meta) => {
         /**
-         * 🔥 THE MASTER LOGIC:
-         * 1. Nayi File: Agar meta.mode 'file' he aur value me HTTP nahi he, matlab ye local selection he.
-         * 2. Existing URL: Agar meta.value ya meta.url me HTTP he, matlab ye Cloudinary ka purana link he.
-         * 3. YouTube: Agar URL me youtube he toh type 'video' automatic hoga.
+         * 🔥 THE MASTER LOGIC: (Undisturbed)
          */
-        
         const isUrlValue = typeof meta.value === 'string' && meta.value.startsWith('http');
         const isUrlField = typeof meta.url === 'string' && meta.url.startsWith('http');
 
         if (meta.mode === "file" && !isUrlValue) {
-          // Case: Nayi file upload ki gayi hai
           if (files[fileIndex]) {
             wordMedia.push({ 
               type: meta.type || "image", 
@@ -215,7 +212,6 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
             fileIndex++;
           }
         } else {
-          // Case: Purana Cloudinary link he ya YouTube/Network link he
           const finalUrl = meta.value || meta.url;
           if (finalUrl) {
             const isYT = finalUrl.includes('youtube') || finalUrl.includes('youtu.be');
@@ -228,6 +224,7 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
       });
 
       return {
+        title: vocab.title || "", // 🔥 FIX 2: Individual Card ka title sync ho raha hai
         word: vocab.word,
         meaning: vocab.meaning,
         sentence: vocab.sentence || "",
@@ -237,7 +234,7 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
 
     // 2. 🔄 Atomic Field Updates
     existingPost.vocabData = finalVocabData;
-    existingPost.title = manualTitle;
+    existingPost.title = manualTitle; // ✅ Ultimate Title updated
     
     if (userName) existingPost.userName = userName;
     if (badgeName) existingPost.badgeName = badgeName;

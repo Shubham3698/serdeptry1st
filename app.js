@@ -97,6 +97,7 @@ const wordRoutes = require("./routes/wordRoutes");
 const personalVaultRoutes = require("./routes/english/PersonalVault");
 
 const notificationRoutes = require("./routes/notificationRoutes");
+const imgGenerationRoute = require('./routes/imggeneration');
 
 // =====================
 // Routes Use
@@ -119,6 +120,7 @@ app.use("/api/words", wordRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.use("/api/personal-vault", personalVaultRoutes);
+app.use('/api/image', imgGenerationRoute);
 
 // =====================
 // Test Route (Deployment Check)

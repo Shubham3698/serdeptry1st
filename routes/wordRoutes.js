@@ -1,366 +1,114 @@
 const express = require("express");
 const router = express.Router();
-
 const axios = require("axios");
-
 const Vocab = require("../models/Word");
 
-
-
-// 🔥 WORD ANALYZE ROUTE
-
 router.post("/define", async (req, res) => {
+  const { word, userId, getAlternative } = req.body;
 
-  const { word, userId } = req.body;
-
-
-
-  // ✅ Validation
-
-  if (!word || !word.trim()) {
-
-    return res.status(400).json({
-      success: false,
-      message: "Word missing hai boss! ✍️",
-    });
-
-  }
-
-  if (!userId) {
-
-    return res.status(400).json({
-      success: false,
-      message: "User session missing!",
-    });
-
-  }
-
-
-
-  // ✅ API KEY
+  if (!word || !word.trim()) return res.status(400).json({ success: false, message: "Word missing hai boss! ✍️" });
+  if (!userId) return res.status(400).json({ success: false, message: "User session missing!" });
 
   let apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-
-    return res.status(500).json({
-      success: false,
-      message: "Server error: API Key missing.",
-    });
-
-  }
-
-  apiKey = String(apiKey)
-    .replace(/[\r\n\t\s'"]/g, "")
-    .trim();
-
-
-// ✅ AI PROMPT
+  if (!apiKey) return res.status(500).json({ success: false, message: "Server error: API Key missing." });
+  
+  apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
 const promptText = `
-You are an elite English vocabulary coach.
-
-Analyze the English word "${word.trim()}".
-
-Return ONLY valid JSON object.
-
+You are an elite English vocabulary coach. Analyze the English word "${word.trim()}". Return ONLY valid JSON object.
 Rules:
-
-1. "partOfSpeech"
-- Give exact grammar category
-- Example:
-  Noun
-  Verb
-  Adjective
-  Adverb
-
-2. "meaning"
-- Give short Hindi meaning in Devanagari
-
-3. "explanation"
-- Explain in very simple Hinglish
-- Explain kab aur kaha use hota hai
-- Keep it short and practical
-- Maximum 2 short lines only
-
-4. "synonyms"
-- Give minimum 8 synonyms
-- Comma separated
-- Only English words
-
-5. "antonyms"
-- Give minimum 6 antonyms
-- Comma separated
-- Only English words
-
-6. "sentences"
-- Give 3 practical daily life sentences
-- Each sentence should contain Hindi translation in brackets
-- Use \\n for line breaks
-
-Important:
-- Response must be valid JSON only
-- Do not return markdown
-- Do not return extra text
+1. "partOfSpeech": Give exact grammar category
+2. "meaning": Give short Hindi meaning in Devanagari
+3. "explanation": Explain in very simple Hinglish (max 2 lines)
+4. "synonyms": Give minimum 8 synonyms (Comma separated, English only)
+5. "antonyms": Give minimum 6 antonyms (Comma separated, English only)
+6. "sentences": Give 3 practical daily life sentences (with Hindi translation in brackets, use \\n for line breaks)
+Important: Response must be valid JSON only. Do not return markdown.
 `;
 
-  // ✅ STRICT JSON SCHEMA
-
   const jsonSchema = {
-
     type: "object",
-
     properties: {
-
-      partOfSpeech: {
-        type: "string",
-      },
-
-      meaning: {
-        type: "string",
-      },
-
-      explanation: {
-        type: "string",
-      },
-
-      synonyms: {
-        type: "string",
-      },
-
-      antonyms: {
-        type: "string",
-      },
-
-      sentences: {
-        type: "string",
-      },
-
+      partOfSpeech: { type: "string" },
+      meaning: { type: "string" },
+      explanation: { type: "string" },
+      synonyms: { type: "string" },
+      antonyms: { type: "string" },
+      sentences: { type: "string" },
     },
-
-    required: [
-      "partOfSpeech",
-      "meaning",
-      "explanation",
-      "synonyms",
-      "antonyms",
-      "sentences",
-    ],
-
+    required: ["partOfSpeech", "meaning", "explanation", "synonyms", "antonyms", "sentences"],
   };
 
-
-
   try {
-
-    console.log(`🔄 Analyzing: ${word.trim()}...`);
-
-
-
-    const queryParams = new URLSearchParams({
-      key: apiKey,
-    });
-
-
-
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?${queryParams.toString()}`;
-
-
+    const queryParams = new URLSearchParams({ key: apiKey });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?${queryParams.toString()}`;
 
     const payload = {
-
-      contents: [
-        {
-          parts: [
-            {
-              text: promptText,
-            },
-          ],
-        },
-      ],
-
-      generationConfig: {
-
-        responseMimeType: "application/json",
-
-        responseSchema: jsonSchema,
-
-      },
-
+      contents: [{ parts: [{ text: promptText }] }],
+      generationConfig: { responseMimeType: "application/json", responseSchema: jsonSchema },
     };
 
+    const response = await axios.post(url, payload, { headers: { "Content-Type": "application/json" } });
 
-
-    const response = await axios.post(
-      url,
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-
-
-    // ✅ RESPONSE VALIDATION
-
-    if (
-      response.data &&
-      response.data.candidates &&
-      response.data.candidates[0].content.parts[0].text
-    ) {
-
-      const rawText =
-        response.data.candidates[0].content.parts[0].text;
-
-
-
+    if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
+      const rawText = response.data.candidates[0].content.parts[0].text;
       const parsedData = JSON.parse(rawText.trim());
-
-
-
       const targetWord = word.trim().toLowerCase();
 
+      // 🔥 PURANI IMAGE CHECK KARNA
+      const existingWord = await Vocab.findOne({ userId, word: targetWord });
+      let savedImageUrl = "";
+      // Agar user refine context mang raha hai par image wahi rakhni hai
+      if (existingWord && existingWord.imageUrl) {
+          savedImageUrl = existingWord.imageUrl;
+      }
 
-
-      // ✅ REMOVE OLD SAME WORD
-
-      await Vocab.deleteOne({
-        userId,
-        word: targetWord,
-      });
-
-
-
-      // ✅ SAVE NEW WORD
+      await Vocab.deleteOne({ userId, word: targetWord });
 
       const newVocabEntry = new Vocab({
-
         userId,
-
         word: targetWord,
-
         partOfSpeech: parsedData.partOfSpeech,
-
         meaning: parsedData.meaning,
-
         explanation: parsedData.explanation,
-
         synonyms: parsedData.synonyms,
-
         antonyms: parsedData.antonyms,
-
         sentences: parsedData.sentences,
-
+        imageUrl: savedImageUrl // 🔥 Purani image URL wapas attach kardi
       });
-
-
 
       await newVocabEntry.save();
 
-
-
-      // ✅ SEND RESPONSE
-
       return res.json({
-
         success: true,
-
         data: {
-
           word: targetWord,
-
           partOfSpeech: parsedData.partOfSpeech,
-
           meaning: parsedData.meaning,
-
           explanation: parsedData.explanation,
-
           synonyms: parsedData.synonyms,
-
           antonyms: parsedData.antonyms,
-
           sentences: parsedData.sentences,
-
+          imageUrl: savedImageUrl // Response me frontend ko URL bhej diya
         },
-
       });
-
     } else {
-
       throw new Error("Invalid response structure from Gemini.");
-
     }
-
   } catch (error) {
-
-    const errorDetails = error.response
-      ? JSON.stringify(error.response.data)
-      : error.message;
-
-
-
-    console.error("❌ Gemini API Error:", errorDetails);
-
-
-
-    return res.status(503).json({
-
-      success: false,
-
-      message: "AI Engine fail ho gaya ya schema invalid hai!",
-
-    });
-
+    console.error("❌ Gemini API Error:", error.message);
+    return res.status(503).json({ success: false, message: "AI Engine fail ho gaya!" });
   }
-
 });
-
-
-
-// 🔥 HISTORY FETCH ROUTE
 
 router.get("/history/:userId", async (req, res) => {
-
   try {
-
     const { userId } = req.params;
-
-
-
-    const userHistory = await Vocab.find({
-      userId,
-    })
-      .sort({ createdAt: -1 })
-      .limit(10);
-
-
-
-    return res.json({
-      success: true,
-      data: userHistory,
-    });
-
+    const userHistory = await Vocab.find({ userId }).sort({ createdAt: -1 }).limit(10);
+    return res.json({ success: true, data: userHistory });
   } catch (error) {
-
-    console.error("❌ History Error:", error.message);
-
-
-
-    return res.status(500).json({
-
-      success: false,
-
-      message: "DB History fetch nahi ho payi!",
-
-    });
-
+    return res.status(500).json({ success: false, message: "DB History fetch nahi ho payi!" });
   }
-
 });
-
-
 
 module.exports = router;

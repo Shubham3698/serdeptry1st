@@ -1,9 +1,12 @@
 const mongoose = require("mongoose");
 
 const EnglishPostSchema = new mongoose.Schema({
+  // 🔥 ULTIMATE DECK TITLE
   title: { type: String, trim: true, default: "New English Signal" },
 
   vocabData: [{
+    // 🔥 INDIVIDUAL CARD TITLE / SUBJECT
+    title: { type: String, trim: true, default: "" }, 
     word: { type: String, required: true, trim: true },
     meaning: { type: String, required: true, trim: true },
     sentence: { type: String, default: "" }, 
@@ -49,10 +52,9 @@ const EnglishPostSchema = new mongoose.Schema({
 });
 
 // ==========================================
-// 🔥 THE MASTER SYNC: Pre-Save (Fixed Version)
+// 🔥 THE MASTER SYNC: Pre-Save
 // ==========================================
 EnglishPostSchema.pre('save', function() {
-  // 1. Sync Base Metadata
   if (this.vocabData && this.vocabData.length > 0) {
     const firstCard = this.vocabData[0];
     this.word = firstCard.word;
@@ -62,23 +64,20 @@ EnglishPostSchema.pre('save', function() {
       this.image = firstCard.media[0].url;
     }
 
-    // 2. ATOMIC VOTE SYNC: 2 se 3 wala asli logic
     const masterVoterSet = new Set();
     this.vocabData.forEach(card => {
       if (Array.isArray(card.votedBy)) {
-        card.voteCount = card.votedBy.length; // Card specific count
+        card.voteCount = card.votedBy.length; 
         card.votedBy.forEach(email => {
           if (email) masterVoterSet.add(email.toLowerCase().trim());
         });
       }
     });
 
-    // Main post level update
     this.votedBy = Array.from(masterVoterSet);
-    this.voteCount = this.votedBy.length; // 👈 Professional Counter
+    this.voteCount = this.votedBy.length; 
   }
   
-  // Note: Modern Mongoose mein yahan next() ki zaroorat nahi agar aap function return kar rahe ho
   return Promise.resolve();
 });
 
