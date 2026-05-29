@@ -22,7 +22,7 @@ Rules:
 3. "explanation": Explain in very simple Hinglish (max 2 lines)
 4. "synonyms": Give minimum 8 synonyms (Comma separated, English only)
 5. "antonyms": Give minimum 6 antonyms (Comma separated, English only)
-6. "sentences": Give 3 factual, universally true, or scientifically accurate sentences (with Hindi translation in brackets, use \\n for line breaks)
+6."sentences": Give 3 simple, meaningful, and universally true facts or daily-life realities using this word (with Hindi translation in brackets, use \\n for line breaks). Keep them profound but easy to understand.
 Important: Response must be valid JSON only. Do not return markdown.
 `;
 
