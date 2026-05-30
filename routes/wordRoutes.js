@@ -177,6 +177,32 @@ router.post("/srs/review", async (req, res) => {
   }
 });
 
+// Specific word ki saari mistakes aur SRS records clear karne ke liye
+router.delete("/srs/clear-word-mistakes", async (req, res) => {
+  try {
+    const { userId, word } = req.body;
+
+    if (!userId || !word) {
+      return res.status(400).json({ success: false, message: "Missing Data!" });
+    }
+
+    // Is word se related saare sentence reviews delete kar do
+    const result = await SentenceReview.deleteMany({ 
+      userId, 
+      word: { $regex: new RegExp(`^${word}$`, "i") } 
+    });
+
+    res.json({ 
+      success: true, 
+      message: `${word} ki history clear kar di gayi hai!`,
+      deletedCount: result.deletedCount 
+    });
+  } catch (err) {
+    console.error("Clear mistakes error:", err);
+    res.status(500).json({ success: false, message: "Mistakes clear nahi ho payi!" });
+  }
+});
+
 // 3. Get ALL Mistakes (Mistakes Tab ke liye saara data fetch karega)
 router.get("/srs/all-mistakes/:userId", async (req, res) => {
   try {

@@ -19,6 +19,7 @@
     "ejs": "~2.6.1",
     "express": "~4.16.1",
     "firebase-admin": "^13.9.0",
+    "google-auth-library": "^10.6.2",
     "google-translate-api-next": "^0.1.0",
     "http-errors": "~1.6.3",
     "instamojo-nodejs": "^0.0.5",
@@ -27,6 +28,7 @@
     "morgan": "~1.9.1",
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
+    "node-fetch": "^3.3.2",
     "openai": "^6.36.0",
     "razorpay": "^2.9.6"
   }
