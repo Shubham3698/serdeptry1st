@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const axios = require("axios");
 const Vocab = require("../models/Word");
+const PracticeStats = require("../models/english/PracticeStats");
+const SentenceReview = require("../models/english/SentenceReview");
 
 router.post("/define", async (req, res) => {
   const { word, userId, getAlternative } = req.body;
@@ -108,6 +110,124 @@ router.get("/history/:userId", async (req, res) => {
     return res.json({ success: true, data: userHistory });
   } catch (error) {
     return res.status(500).json({ success: false, message: "DB History fetch nahi ho payi!" });
+  }
+});
+
+// 1. Get Due Sentences (Jo aaj practice karne hain)
+router.get("/srs/due/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const now = new Date();
+    // Jo sentences ka time aa gaya hai ya pehle se pending hain
+    const dueItems = await SentenceReview.find({ 
+      userId, 
+      nextReviewDate: { $lte: now } 
+    }).limit(20); // Ek baar me max 20 review
+    
+    res.json({ success: true, data: dueItems });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Review fetch error" });
+  }
+});
+
+// 2. Update SRS (Jab user Again/Hard/Good/Easy dabaye)
+router.post("/srs/review", async (req, res) => {
+  try {
+    const { userId, word, hindiSentence, englishSentence, grade } = req.body;
+    
+    let item = await SentenceReview.findOne({ userId, englishSentence });
+    
+    if (!item) {
+      item = new SentenceReview({ userId, word, hindiSentence, englishSentence });
+    }
+
+    // Anki/SuperMemo-2 Basic Algorithm
+    if (grade === 'again') {
+      item.interval = 0; // Aaj hi wapas aayega (ya kuch minutes me)
+      item.easeFactor = Math.max(1.3, item.easeFactor - 0.2);
+    } else {
+      if (item.interval === 0) {
+        if (grade === 'hard') item.interval = 1;
+        if (grade === 'good') item.interval = 3;
+        if (grade === 'easy') item.interval = 5;
+      } else {
+        if (grade === 'hard') item.interval = item.interval * 1.2;
+        if (grade === 'good') item.interval = (item.interval * item.easeFactor);
+        if (grade === 'easy') item.interval = (item.interval * item.easeFactor * 1.3);
+      }
+      item.interval = Math.round(item.interval);
+      if (grade === 'easy') item.easeFactor += 0.15;
+    }
+
+    // Nayi date set karo
+    let nextDate = new Date();
+    if (grade === 'again') {
+      nextDate.setMinutes(nextDate.getMinutes() + 10); // 10 minute baad wapas
+    } else {
+      nextDate.setDate(nextDate.getDate() + item.interval);
+    }
+    
+    item.nextReviewDate = nextDate;
+    await item.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "SRS update fail" });
+  }
+});
+
+// 1. Get User Stats (Total Searched, Total Practiced, Total Mistakes)
+router.get("/stats/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Total words searched in dictionary
+    const totalSearched = await Vocab.countDocuments({ userId });
+    
+    // User ke practice stats fetch ya create karo
+    let stats = await PracticeStats.findOne({ userId });
+    if (!stats) {
+      stats = await PracticeStats.create({ userId, totalPracticed: 0, totalMistakes: 0 });
+    }
+
+    return res.json({ 
+      success: true, 
+      data: {
+        totalSearched,
+        totalPracticed: stats.totalPracticed,
+        totalMistakes: stats.totalMistakes
+      }
+    });
+  } catch (error) {
+    console.error("Stats fetch error:", error);
+    return res.status(500).json({ success: false, message: "Stats fetch fail ho gaye!" });
+  }
+});
+
+// 2. Update Stats on Every Attempt
+router.post("/stats/update", async (req, res) => {
+  try {
+    const { userId, isCorrect } = req.body;
+    
+    let stats = await PracticeStats.findOne({ userId });
+    if (!stats) {
+      stats = new PracticeStats({ userId });
+    }
+
+    // Har attempt pe sentence count badhao
+    stats.totalPracticed += 1;
+    
+    // Agar galat jawab diya to mistake count badhao
+    if (!isCorrect) {
+      stats.totalMistakes += 1;
+    }
+
+    await stats.save();
+    return res.json({ success: true, data: stats });
+  } catch (error) {
+    console.error("Stats update error:", error);
+    return res.status(500).json({ success: false, message: "Stats update nahi ho paye!" });
   }
 });
 
