@@ -177,6 +177,24 @@ router.post("/srs/review", async (req, res) => {
   }
 });
 
+// 3. Get ALL Mistakes (Mistakes Tab ke liye saara data fetch karega)
+router.get("/srs/all-mistakes/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Database se user ke saare record nikal lo
+    const allMistakes = await SentenceReview.find({ userId });
+    
+    res.json({ 
+      success: true, 
+      data: allMistakes 
+    });
+  } catch (err) {
+    console.error("Error fetching all mistakes:", err);
+    res.status(500).json({ success: false, message: "Mistakes fetch error" });
+  }
+});
+
 // 1. Get User Stats (Total Searched, Total Practiced, Total Mistakes)
 router.get("/stats/:userId", async (req, res) => {
   try {
