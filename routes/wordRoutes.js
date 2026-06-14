@@ -17,14 +17,14 @@ router.post("/define", async (req, res) => {
   apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
 const promptText = `
-You are an elite English vocabulary coach. Analyze the English word "${word.trim()}". Return ONLY valid JSON object.
+You are an elite English vocabulary coach. Analyze the English word "${word.trim()}". Return ONLY a valid JSON object.
 Rules:
 1. "partOfSpeech": Give exact grammar category
 2. "meaning": Give short Hindi meaning in Devanagari
 3. "explanation": Explain in very simple Hinglish (max 2 lines)
 4. "synonyms": Give minimum 8 synonyms (Comma separated, English only)
 5. "antonyms": Give minimum 6 antonyms (Comma separated, English only)
-6."sentences": Give 3 simple, meaningful, and universally true facts or daily-life realities using this word (with Hindi translation in brackets, use \\n for line breaks). Keep them profound but easy to understand.
+6. "sentences": Give EXACTLY 3 short, single-line factual sentences using this word. STRICTLY NO paragraphs or long explanations. Each sentence must be a brief, bold, and universally true fact. Format exactly like this: "English sentence. (Hindi translation)" separated by \\n.
 Important: Response must be valid JSON only. Do not return markdown.
 `;
 
