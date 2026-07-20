@@ -30,4 +30,28 @@ router.post('/add-chapter', async (req, res) => {
   }
 });
 
+// 3. Update Existing Chapter
+router.put('/update-chapter/:id', async (req, res) => {
+  try {
+    const updatedChapter = await Chapter.findByIdAndUpdate(
+      req.params.id, 
+      req.body, 
+      { new: true } // Ye naya updated data return karega
+    );
+    res.status(200).json({ message: "Chapter Updated Successfully!", chapter: updatedChapter });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Delete Chapter
+router.delete('/delete-chapter/:id', async (req, res) => {
+  try {
+    await Chapter.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Chapter Deleted Successfully!" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
