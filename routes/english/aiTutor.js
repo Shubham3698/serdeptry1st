@@ -6,12 +6,12 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const router = express.Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Dhyan dein: Yahan humne sirf '/gemini-voice' likha hai
 router.post('/gemini-voice', async (req, res) => {
   try {
     const { message, email } = req.body;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // ✅ Model name update kar diya hai: 'gemini-1.5-flash-latest'
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
     const prompt = `You are an English AI tutor. The user said: "${message}". Reply naturally and correct any grammar mistakes at the end.`;
 
     const result = await model.generateContent(prompt);
