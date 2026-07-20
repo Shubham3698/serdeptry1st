@@ -11,7 +11,7 @@ router.post('/gemini-voice', async (req, res) => {
     const { message, email } = req.body;
 
     // ✅ Model name update kar diya hai: 'gemini-1.5-flash-latest'
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     const prompt = `You are an English AI tutor. The user said: "${message}". Reply naturally and correct any grammar mistakes at the end.`;
 
     const result = await model.generateContent(prompt);
