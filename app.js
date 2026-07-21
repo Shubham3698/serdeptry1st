@@ -100,6 +100,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const imgGenerationRoute = require('./routes/imggeneration');
 const courseRoutes = require('./routes/english/courseRoutes');
 const aiTutorRoutes = require('./routes/english/aiTutor');
+const squadRoutes = require('./routes/english/squads');
 
 // =====================
 // Routes Use
@@ -125,6 +126,7 @@ app.use("/api/personal-vault", personalVaultRoutes);
 app.use('/api/image', imgGenerationRoute);
 app.use('/api', courseRoutes);
 app.use('/api/ai-tutor', aiTutorRoutes);
+app.use('/api/squads', squadRoutes);
 
 // =====================
 // Test Route (Deployment Check)
