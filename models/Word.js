@@ -9,7 +9,8 @@ const VocabSchema = new mongoose.Schema({
   synonyms: { type: String, required: true },   
   antonyms: { type: String, required: true },   
   sentences: { type: String, required: true },
-  imageUrl: { type: String, default: "" }, // 🔥 Naya field Cloudinary URL ke liye
+  imageUrl: { type: String, default: "" }, // Purana field (waise hi rehne de taaki errors na aayein)
+  imageUrls: { type: [String], default: [] } // 🔥 NAYA FIELD MULTIPLE IMAGES KE LIYE
 }, { timestamps: true });
 
 module.exports = mongoose.model("Vocab", VocabSchema);

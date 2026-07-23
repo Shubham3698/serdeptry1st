@@ -57,12 +57,23 @@ Important: Response must be valid JSON only. Do not return markdown.
       const parsedData = JSON.parse(rawText.trim());
       const targetWord = word.trim().toLowerCase();
 
-      // 🔥 PURANI IMAGE CHECK KARNA
+      // 🔥 PURANI AUR NAYI IMAGES CHECK KARNA (MULTIPLE IMAGES SUPPORT)
       const existingWord = await Vocab.findOne({ userId, word: targetWord });
-      let savedImageUrl = "";
-      // Agar user refine context mang raha hai par image wahi rakhni hai
-      if (existingWord && existingWord.imageUrl) {
-          savedImageUrl = existingWord.imageUrl;
+      
+      let savedImageUrls = []; // Array to store multiple images
+      let savedSingleImageUrl = ""; // Fallback for older frontend compatibility
+      
+      if (existingWord) {
+        // Naya format check
+        if (existingWord.imageUrls && existingWord.imageUrls.length > 0) {
+            savedImageUrls = existingWord.imageUrls;
+            savedSingleImageUrl = existingWord.imageUrls[0];
+        } 
+        // Purana format check (agar pehle ek hi image save thi)
+        else if (existingWord.imageUrl) {
+            savedImageUrls = [existingWord.imageUrl];
+            savedSingleImageUrl = existingWord.imageUrl;
+        }
       }
 
       await Vocab.deleteOne({ userId, word: targetWord });
@@ -76,7 +87,8 @@ Important: Response must be valid JSON only. Do not return markdown.
         synonyms: parsedData.synonyms,
         antonyms: parsedData.antonyms,
         sentences: parsedData.sentences,
-        imageUrl: savedImageUrl // 🔥 Purani image URL wapas attach kardi
+        imageUrls: savedImageUrls, // 🔥 ARRAY: Saari images save hongi
+        imageUrl: savedSingleImageUrl // 🔥 STRING: Purana field bhi maintain kar rahe for safety
       });
 
       await newVocabEntry.save();
@@ -91,7 +103,8 @@ Important: Response must be valid JSON only. Do not return markdown.
           synonyms: parsedData.synonyms,
           antonyms: parsedData.antonyms,
           sentences: parsedData.sentences,
-          imageUrl: savedImageUrl // Response me frontend ko URL bhej diya
+          imageUrls: savedImageUrls, // Array sent to frontend
+          imageUrl: savedSingleImageUrl // String sent to frontend (backward compatibility)
         },
       });
     } else {
@@ -337,5 +350,50 @@ router.post("/generate-practice", async (req, res) => {
     return res.status(503).json({ success: false, message: "Game generate karne me dikkat aayi!" });
   }
 });
+
+// 🔥 NAYA ROUTE: Image remove/update handle karne ke liye
+router.post("/update-images", async (req, res) => {
+  try {
+    const { word, userId, imageUrls } = req.body;
+
+    if (!word || !userId) {
+      return res.status(400).json({ success: false, message: "Missing Data: Word or userId nahi mila!" });
+    }
+
+    const targetWord = word.trim().toLowerCase();
+
+    // Purane frontend/format ke liye single imageUrl ko bhi sync kar lo
+    const singleImageUrl = (imageUrls && imageUrls.length > 0) ? imageUrls[0] : "";
+
+    // Database me word dhoondo aur image arrays ko overwrite/khali kar do
+    const updatedVocab = await Vocab.findOneAndUpdate(
+      { word: targetWord, userId: userId },
+      { 
+        $set: { 
+          imageUrls: imageUrls || [], 
+          imageUrl: singleImageUrl 
+        } 
+      },
+      { new: true } // Updated data return karega
+    );
+
+    if (!updatedVocab) {
+      return res.status(404).json({ success: false, message: "History me ye word nahi mila!" });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: "Images permanently deleted/updated from DB! 🗑️", 
+      data: updatedVocab 
+    });
+
+  } catch (error) {
+    console.error("❌ Update Images Error:", error);
+    return res.status(500).json({ success: false, message: "Database update fail ho gaya!" });
+  }
+});
+
+// Ye tumhari file ki aakhri line hogi:
+// module.exports = router;
 
 module.exports = router;
