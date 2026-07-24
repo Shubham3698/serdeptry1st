@@ -119,7 +119,10 @@ Important: Response must be valid JSON only. Do not return markdown.
 router.get("/history/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const userHistory = await Vocab.find({ userId }).sort({ createdAt: -1 }).limit(10);
+    
+    // Removed .limit(10) entirely to fetch the complete stack
+    const userHistory = await Vocab.find({ userId }).sort({ createdAt: -1 });
+    
     return res.json({ success: true, data: userHistory });
   } catch (error) {
     return res.status(500).json({ success: false, message: "DB History fetch nahi ho payi!" });
