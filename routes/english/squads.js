@@ -22,7 +22,6 @@ router.post('/:squadId/add-member', async (req, res) => {
     const squad = await Squad.findById(req.params.squadId);
     if (!squad) return res.status(404).json({ success: false, message: "Squad not found" });
 
-    // Agar email pehle se nahi hai toh add karo
     if (!squad.members.includes(newMemberEmail)) {
       squad.members.push(newMemberEmail);
       await squad.save();
@@ -33,7 +32,7 @@ router.post('/:squadId/add-member', async (req, res) => {
   }
 });
 
-// 3. Send a Message (Text or Shared Post)
+// 3. Send a Message 
 router.post('/:squadId/message', async (req, res) => {
   try {
     const { senderEmail, type, text, postId } = req.body;
@@ -42,7 +41,8 @@ router.post('/:squadId/message', async (req, res) => {
       senderEmail,
       type,
       text,
-      postId
+      postId,
+      readBy: [senderEmail] // 🔥 NEW: Jisne bheja, usne toh padh hi liya
     });
     await newMessage.save();
     res.json({ success: true, message: newMessage });
@@ -51,24 +51,49 @@ router.post('/:squadId/message', async (req, res) => {
   }
 });
 
-// 4. Get all messages for a Squad
+// 4. Get all messages (And Mark them as Read)
 router.get('/:squadId/messages', async (req, res) => {
   try {
+    const { email } = req.query; // 🔥 NEW: UI se user ka email aayega (Query params)
+
+    // 🔥 NEW LOGIC: Jaise hi user ne chat kholi, uske liye messages ko 'read' mark kar do
+    if (email) {
+      await SquadMessage.updateMany(
+        { 
+          squadId: req.params.squadId, 
+          readBy: { $ne: email } // Sirf wo update karo jisme ye email nahi hai
+        },
+        { $push: { readBy: email } } // Email ko readBy array me daal do
+      );
+    }
+
     const messages = await SquadMessage.find({ squadId: req.params.squadId })
-      .populate('postId') // Agar kisi ne post share ki hai, toh post ki details bhi sath aayengi
-      .sort({ timestamp: 1 }); // Purane messages upar, naye neeche
+      .populate('postId') 
+      .sort({ timestamp: 1 }); 
     res.json({ success: true, messages });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 5. Get all squads for a specific user
+// 5. Get all squads for a specific user (WITH UNREAD COUNT)
 router.get('/user/:email', async (req, res) => {
   try {
     const userEmail = req.params.email;
-    const squads = await Squad.find({ members: userEmail }).sort({ createdAt: -1 });
-    res.json({ success: true, squads });
+    // .lean() is important here so we can modify the object before sending
+    const squads = await Squad.find({ members: userEmail }).sort({ createdAt: -1 }).lean();
+
+    // 🔥 NEW LOGIC: Har squad ke liye unread count calculate karo
+    const squadsWithUnreadCount = await Promise.all(squads.map(async (squad) => {
+      const unreadCount = await SquadMessage.countDocuments({
+        squadId: squad._id,
+        readBy: { $ne: userEmail } // Un messages ko gino jisme user ka email readBy me nahi hai
+      });
+      
+      return { ...squad, unreadCount };
+    }));
+
+    res.json({ success: true, squads: squadsWithUnreadCount });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

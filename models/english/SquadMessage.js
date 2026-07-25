@@ -5,7 +5,11 @@ const squadMessageSchema = new mongoose.Schema({
   senderEmail: { type: String, required: true },
   type: { type: String, enum: ['text', 'post'], default: 'text' }, 
   text: { type: String }, 
-  postId: { type: mongoose.Schema.Types.ObjectId, ref: 'EnglishPost' }, // 'EnglishPost' ko apne actual post model name se replace kar dena agar alag ho
+  postId: { type: mongoose.Schema.Types.ObjectId, ref: 'EnglishPost' },
+  
+  // 🔥 YEH LINE ADD KI HAI - Unread Messages Badge ke liye
+  readBy: [{ type: String }], 
+  
   timestamp: { type: Date, default: Date.now }
 });
 
