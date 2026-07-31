@@ -26,6 +26,7 @@ mongoose
 // 🔥 UPDATED Middlewares (CORS FIX FOR MOBILE APP)
 // =====================
 const allowedOrigins = [
+  "https://localhost",
   "http://localhost",           // ✅ Capacitor Android App ke liye
   "capacitor://localhost",      // ✅ Capacitor iOS App ke liye
   "http://localhost:5173",
