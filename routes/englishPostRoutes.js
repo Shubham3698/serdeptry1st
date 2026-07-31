@@ -512,12 +512,22 @@ router.get("/my-posts", async (req, res) => {
 });
 
 // ✅ 7. ADD COMMENT
-router.post("/comment/:postId", async (req, res) => {
+// ✅ 7. ADD COMMENT (With Image Upload)
+// 🔥 "upload.single('image')" add kiya taaki multer file ko intercept kare
+router.post("/comment/:postId", upload.single("image"), async (req, res) => {
   try {
     const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    post.comments.push({ name: req.body.name, text: req.body.text });
+    // 🔥 Cloudinary se aayi hui image ka URL req.file.path me hoga
+    const imageUrl = req.file ? req.file.path : null;
+
+    post.comments.push({ 
+      name: req.body.name, 
+      text: req.body.text || "", // Agar sirf photo bheji hai toh text empty hoga
+      image: imageUrl 
+    });
+
     await post.save();
     res.json({ success: true, comments: post.comments });
   } catch (err) {

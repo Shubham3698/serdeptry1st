@@ -45,6 +45,7 @@ const EnglishPostSchema = new mongoose.Schema({
     email: { type: String, lowercase: true, trim: true },
     name: String,
     text: String,
+    image: { type: String, default: "" },
     createdAt: { type: Date, default: Date.now }
   }]
 }, { 
