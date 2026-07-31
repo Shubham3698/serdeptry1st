@@ -23,9 +23,11 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // =====================
-// 🔥 UPDATED Middlewares (CORS FIX)
+// 🔥 UPDATED Middlewares (CORS FIX FOR MOBILE APP)
 // =====================
 const allowedOrigins = [
+  "http://localhost",           // ✅ Capacitor Android App ke liye
+  "capacitor://localhost",      // ✅ Capacitor iOS App ke liye
   "http://localhost:5173",
   "http://localhost:5174",
   "http://127.0.0.1:3000",
@@ -47,8 +49,13 @@ app.use(cors({
       return callback(null, true);
     }
 
-    // 3. Allow whitelisted domains OR any Vercel preview branch
-    const isVercelPreview = origin.endsWith(".vercel.app");
+    // 3. Allow Capacitor Mobile Apps
+    if (origin === "http://localhost" || origin === "capacitor://localhost") {
+      return callback(null, true);
+    }
+
+    // 4. Allow whitelisted domains OR any Vercel preview branch
+    const isVercelPreview = origin && origin.endsWith(".vercel.app");
     if (allowedOrigins.includes(origin) || isVercelPreview) {
       return callback(null, true);
     }
