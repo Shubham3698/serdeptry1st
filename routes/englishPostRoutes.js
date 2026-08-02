@@ -98,9 +98,10 @@ const sendBlast = async (title, word, postId) => {
   }
 };
 // ✅ Updated Create Route
+// ✅ Updated Create Route (WITH NOTIFICATION TRIGGER)
 router.post("/create", upload.array("images", 20), async (req, res) => {
   try {
-    // 🔥 FIX 1: 'title' ko bhi req.body se receive kiya (Ultimate Deck Title)
+    // 1. Receving Data
     const { userEmail, userName, vocabData, mediaMetadata, badgeName, title } = req.body;
     
     const parsedVocab = vocabData ? JSON.parse(vocabData) : [];
@@ -111,8 +112,7 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       return res.status(400).json({ success: false, message: "Bhai, kam se kam ek word toh dalo!" });
     }
 
-    // 🎯 MASTER TITLE LOGIC: 
-    // Pehle direct req.body.title dekho, warna card ka title, warna default
+    // 2. MASTER TITLE LOGIC 
     const manualTitle = title || parsedVocab[0]?.title || "New Deck"; 
 
     let fileIndex = 0;
@@ -132,7 +132,7 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       });
 
       return {
-        title: vocab.title || "", // 🔥 FIX 2: Individual Card ka title database mein jayega
+        title: vocab.title || "", 
         word: vocab.word,
         meaning: vocab.meaning,
         sentence: vocab.sentence || "",
@@ -140,26 +140,58 @@ router.post("/create", upload.array("images", 20), async (req, res) => {
       };
     });
 
-    // 2. Initialize New Post
+    // 3. Initialize New Post
     const newPost = new EnglishPost({
-      title: manualTitle, // ✅ Ultimate Title saved here
+      title: manualTitle, 
       vocabData: finalVocabData,
       userEmail,
       userName: userName || userEmail?.split('@')[0],
       badgeName: badgeName || "Normal",
     });
 
-    // 3. Save Post to DB (Triggering middleware)
+    // 4. Save Post to Database
     await newPost.save();
 
-    // 4. 🔥 PROFESSIONAL BLAST NOTIFICATION
-    const firstWord = finalVocabData[0]?.word || "New Deck";
-    const postTitle = newPost.title; 
-    const postId = newPost._id.toString(); 
+    // ----------------------------------------------------
+    // 🔥 NEW: FIREBASE PUSH NOTIFICATION TRIGGER LOGIC 🔥
+    // ----------------------------------------------------
+    try {
+      const firstWord = finalVocabData[0]?.word || "New Deck";
+      const postTitle = newPost.title; 
+      const postId = newPost._id.toString(); 
 
-    // ✅ Sahi Blast call: Title, Word, aur PostID ke saath
-    sendBlast(postTitle, firstWord, postId); 
+      // Tumhare pass 'sendBlast' pehle se likha tha, lekin hum ek bar confirm code likh rahe hain
+      const users = await EnglishUser.find({ 
+        fcmToken: { $exists: true, $ne: null, $ne: "" },
+        email: { $ne: userEmail } // Jisne post kiya usko notify mat karo
+      });
+      
+      const tokens = users.map(u => u.fcmToken);
 
+      if (tokens.length > 0) {
+        const message = {
+          notification: {
+            title: postTitle || "New Signal Detected! 📡", 
+            body: `Intelligence Update: "${firstWord}". Tap to analyze! 🚀`,
+          },
+          data: {
+            postId: postId, // Android me handle karne ke liye (Optional)
+            word: firstWord
+          },
+          tokens: tokens,
+        };
+
+        // Firebase ko Multicast bhejo
+        const response = await admin.messaging().sendEachForMulticast(message);
+        console.log(`✅ Push Sent: ${response.successCount} users notified!`);
+      }
+    } catch (pushErr) {
+      console.error("❌ Firebase Push Error:", pushErr.message);
+      // Agar notification fail ho, tab bhi post save ki success bhejna chahiye
+    }
+    // ----------------------------------------------------
+
+    // 5. Final Response
     res.status(201).json({ 
       success: true, 
       message: "Smart Deck Created & Notified! 🚀", 

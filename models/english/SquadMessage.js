@@ -7,8 +7,13 @@ const squadMessageSchema = new mongoose.Schema({
   text: { type: String }, 
   postId: { type: mongoose.Schema.Types.ObjectId, ref: 'EnglishPost' },
   
-  // 🔥 YEH LINE ADD KI HAI - Unread Messages Badge ke liye
+  // Unread Messages Badge ke liye
   readBy: [{ type: String }], 
+  
+  // 🔥 YEH 3 NAYE FIELDS ADD KIYE HAIN - WhatsApp Style Reply ke liye 🔥
+  replyToId: { type: String, default: null },
+  replyToText: { type: String, default: null },
+  replyToUser: { type: String, default: null },
   
   timestamp: { type: Date, default: Date.now }
 });

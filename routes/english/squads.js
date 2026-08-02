@@ -32,18 +32,25 @@ router.post('/:squadId/add-member', async (req, res) => {
   }
 });
 
-// 3. Send a Message 
+// 3. Send a Message (🔥 UPDATED FOR REPLIES)
 router.post('/:squadId/message', async (req, res) => {
   try {
-    const { senderEmail, type, text, postId } = req.body;
+    // 🔥 Req.body se reply wale fields nikaale
+    const { senderEmail, type, text, postId, replyToId, replyToText, replyToUser } = req.body;
+    
     const newMessage = new SquadMessage({
       squadId: req.params.squadId,
       senderEmail,
       type,
       text,
       postId,
-      readBy: [senderEmail] // 🔥 NEW: Jisne bheja, usne toh padh hi liya
+      // 🔥 Naye fields yahan database me save honge
+      replyToId: replyToId || null,
+      replyToText: replyToText || null,
+      replyToUser: replyToUser || null,
+      readBy: [senderEmail] // Jisne bheja, usne toh padh hi liya
     });
+    
     await newMessage.save();
     res.json({ success: true, message: newMessage });
   } catch (error) {
@@ -54,9 +61,9 @@ router.post('/:squadId/message', async (req, res) => {
 // 4. Get all messages (And Mark them as Read)
 router.get('/:squadId/messages', async (req, res) => {
   try {
-    const { email } = req.query; // 🔥 NEW: UI se user ka email aayega (Query params)
+    const { email } = req.query; // UI se user ka email aayega (Query params)
 
-    // 🔥 NEW LOGIC: Jaise hi user ne chat kholi, uske liye messages ko 'read' mark kar do
+    // Jaise hi user ne chat kholi, uske liye messages ko 'read' mark kar do
     if (email) {
       await SquadMessage.updateMany(
         { 
@@ -80,10 +87,9 @@ router.get('/:squadId/messages', async (req, res) => {
 router.get('/user/:email', async (req, res) => {
   try {
     const userEmail = req.params.email;
-    // .lean() is important here so we can modify the object before sending
     const squads = await Squad.find({ members: userEmail }).sort({ createdAt: -1 }).lean();
 
-    // 🔥 NEW LOGIC: Har squad ke liye unread count calculate karo
+    // Har squad ke liye unread count calculate karo
     const squadsWithUnreadCount = await Promise.all(squads.map(async (squad) => {
       const unreadCount = await SquadMessage.countDocuments({
         squadId: squad._id,
