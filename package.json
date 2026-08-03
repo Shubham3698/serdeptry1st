@@ -21,6 +21,7 @@
     "firebase-admin": "^13.9.0",
     "google-auth-library": "^10.6.2",
     "google-translate-api-next": "^0.1.0",
+    "google-tts-api": "^2.0.2",
     "http-errors": "~1.6.3",
     "instamojo-nodejs": "^0.0.5",
     "jsonwebtoken": "^9.0.3",

@@ -1,4 +1,7 @@
+
+const googleTTS = require('google-tts-api');
 const express = require("express");
+
 const router = express.Router();
 const axios = require("axios");
 const Vocab = require("../models/Word");
@@ -57,19 +60,16 @@ Important: Response must be valid JSON only. Do not return markdown.
       const parsedData = JSON.parse(rawText.trim());
       const targetWord = word.trim().toLowerCase();
 
-      // 🔥 PURANI AUR NAYI IMAGES CHECK KARNA (MULTIPLE IMAGES SUPPORT)
       const existingWord = await Vocab.findOne({ userId, word: targetWord });
       
-      let savedImageUrls = []; // Array to store multiple images
-      let savedSingleImageUrl = ""; // Fallback for older frontend compatibility
+      let savedImageUrls = []; 
+      let savedSingleImageUrl = ""; 
       
       if (existingWord) {
-        // Naya format check
         if (existingWord.imageUrls && existingWord.imageUrls.length > 0) {
             savedImageUrls = existingWord.imageUrls;
             savedSingleImageUrl = existingWord.imageUrls[0];
         } 
-        // Purana format check (agar pehle ek hi image save thi)
         else if (existingWord.imageUrl) {
             savedImageUrls = [existingWord.imageUrl];
             savedSingleImageUrl = existingWord.imageUrl;
@@ -87,8 +87,8 @@ Important: Response must be valid JSON only. Do not return markdown.
         synonyms: parsedData.synonyms,
         antonyms: parsedData.antonyms,
         sentences: parsedData.sentences,
-        imageUrls: savedImageUrls, // 🔥 ARRAY: Saari images save hongi
-        imageUrl: savedSingleImageUrl // 🔥 STRING: Purana field bhi maintain kar rahe for safety
+        imageUrls: savedImageUrls, 
+        imageUrl: savedSingleImageUrl 
       });
 
       await newVocabEntry.save();
@@ -103,8 +103,8 @@ Important: Response must be valid JSON only. Do not return markdown.
           synonyms: parsedData.synonyms,
           antonyms: parsedData.antonyms,
           sentences: parsedData.sentences,
-          imageUrls: savedImageUrls, // Array sent to frontend
-          imageUrl: savedSingleImageUrl // String sent to frontend (backward compatibility)
+          imageUrls: savedImageUrls, 
+          imageUrl: savedSingleImageUrl 
         },
       });
     } else {
@@ -119,26 +119,22 @@ Important: Response must be valid JSON only. Do not return markdown.
 router.get("/history/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    
-    // Removed .limit(10) entirely to fetch the complete stack
     const userHistory = await Vocab.find({ userId }).sort({ createdAt: -1 });
-    
     return res.json({ success: true, data: userHistory });
   } catch (error) {
     return res.status(500).json({ success: false, message: "DB History fetch nahi ho payi!" });
   }
 });
 
-// 1. Get Due Sentences (Jo aaj practice karne hain)
+// 1. Get Due Sentences
 router.get("/srs/due/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const now = new Date();
-    // Jo sentences ka time aa gaya hai ya pehle se pending hain
     const dueItems = await SentenceReview.find({ 
       userId, 
       nextReviewDate: { $lte: now } 
-    }).limit(20); // Ek baar me max 20 review
+    }).limit(20); 
     
     res.json({ success: true, data: dueItems });
   } catch (err) {
@@ -146,7 +142,7 @@ router.get("/srs/due/:userId", async (req, res) => {
   }
 });
 
-// 2. Update SRS (Jab user Again/Hard/Good/Easy dabaye)
+// 2. Update SRS
 router.post("/srs/review", async (req, res) => {
   try {
     const { userId, word, hindiSentence, englishSentence, grade } = req.body;
@@ -157,9 +153,8 @@ router.post("/srs/review", async (req, res) => {
       item = new SentenceReview({ userId, word, hindiSentence, englishSentence });
     }
 
-    // Anki/SuperMemo-2 Basic Algorithm
     if (grade === 'again') {
-      item.interval = 0; // Aaj hi wapas aayega (ya kuch minutes me)
+      item.interval = 0; 
       item.easeFactor = Math.max(1.3, item.easeFactor - 0.2);
     } else {
       if (item.interval === 0) {
@@ -175,10 +170,9 @@ router.post("/srs/review", async (req, res) => {
       if (grade === 'easy') item.easeFactor += 0.15;
     }
 
-    // Nayi date set karo
     let nextDate = new Date();
     if (grade === 'again') {
-      nextDate.setMinutes(nextDate.getMinutes() + 10); // 10 minute baad wapas
+      nextDate.setMinutes(nextDate.getMinutes() + 10); 
     } else {
       nextDate.setDate(nextDate.getDate() + item.interval);
     }
@@ -193,7 +187,7 @@ router.post("/srs/review", async (req, res) => {
   }
 });
 
-// Specific word ki saari mistakes aur SRS records clear karne ke liye
+// Clear Word Mistakes
 router.delete("/srs/clear-word-mistakes", async (req, res) => {
   try {
     const { userId, word } = req.body;
@@ -202,7 +196,6 @@ router.delete("/srs/clear-word-mistakes", async (req, res) => {
       return res.status(400).json({ success: false, message: "Missing Data!" });
     }
 
-    // Is word se related saare sentence reviews delete kar do
     const result = await SentenceReview.deleteMany({ 
       userId, 
       word: { $regex: new RegExp(`^${word}$`, "i") } 
@@ -219,33 +212,24 @@ router.delete("/srs/clear-word-mistakes", async (req, res) => {
   }
 });
 
-// 3. Get ALL Mistakes (Mistakes Tab ke liye saara data fetch karega)
+// 3. Get ALL Mistakes
 router.get("/srs/all-mistakes/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    
-    // Database se user ke saare record nikal lo
     const allMistakes = await SentenceReview.find({ userId });
-    
-    res.json({ 
-      success: true, 
-      data: allMistakes 
-    });
+    res.json({ success: true, data: allMistakes });
   } catch (err) {
     console.error("Error fetching all mistakes:", err);
     res.status(500).json({ success: false, message: "Mistakes fetch error" });
   }
 });
 
-// 1. Get User Stats (Total Searched, Total Practiced, Total Mistakes)
+// Get User Stats
 router.get("/stats/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    
-    // Total words searched in dictionary
     const totalSearched = await Vocab.countDocuments({ userId });
     
-    // User ke practice stats fetch ya create karo
     let stats = await PracticeStats.findOne({ userId });
     if (!stats) {
       stats = await PracticeStats.create({ userId, totalPracticed: 0, totalMistakes: 0 });
@@ -265,7 +249,7 @@ router.get("/stats/:userId", async (req, res) => {
   }
 });
 
-// 2. Update Stats on Every Attempt
+// Update Stats
 router.post("/stats/update", async (req, res) => {
   try {
     const { userId, isCorrect } = req.body;
@@ -275,10 +259,7 @@ router.post("/stats/update", async (req, res) => {
       stats = new PracticeStats({ userId });
     }
 
-    // Har attempt pe sentence count badhao
     stats.totalPracticed += 1;
-    
-    // Agar galat jawab diya to mistake count badhao
     if (!isCorrect) {
       stats.totalMistakes += 1;
     }
@@ -291,7 +272,6 @@ router.post("/stats/update", async (req, res) => {
   }
 });
 
-// words.js (Ya tumhara vocab router) me ye naya route add karo
 router.post("/generate-practice", async (req, res) => {
   const { word, userId } = req.body;
 
@@ -302,7 +282,6 @@ router.post("/generate-practice", async (req, res) => {
   
   apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
-  // Prompt specifically designed for distractor game
   const promptText = `
   You are an English teacher creating a sentence building game for the target word "${word}".
   Create a meaningful and practical sentence. Return ONLY a valid JSON object.
@@ -354,7 +333,6 @@ router.post("/generate-practice", async (req, res) => {
   }
 });
 
-// 🔥 NAYA ROUTE: Image remove/update handle karne ke liye
 router.post("/update-images", async (req, res) => {
   try {
     const { word, userId, imageUrls } = req.body;
@@ -364,11 +342,8 @@ router.post("/update-images", async (req, res) => {
     }
 
     const targetWord = word.trim().toLowerCase();
-
-    // Purane frontend/format ke liye single imageUrl ko bhi sync kar lo
     const singleImageUrl = (imageUrls && imageUrls.length > 0) ? imageUrls[0] : "";
 
-    // Database me word dhoondo aur image arrays ko overwrite/khali kar do
     const updatedVocab = await Vocab.findOneAndUpdate(
       { word: targetWord, userId: userId },
       { 
@@ -377,7 +352,7 @@ router.post("/update-images", async (req, res) => {
           imageUrl: singleImageUrl 
         } 
       },
-      { new: true } // Updated data return karega
+      { new: true } 
     );
 
     if (!updatedVocab) {
@@ -396,7 +371,155 @@ router.post("/update-images", async (req, res) => {
   }
 });
 
-// Ye tumhari file ki aakhri line hogi:
-// module.exports = router;
+// 🔥 NAYA ROUTE: AI Grammar Explainer (POLITE, ENCOURAGING & FACTUAL GRAMMAR)
+router.post("/grammar-explain", async (req, res) => {
+  const { correctSentence, userSentence } = req.body;
+
+  if (!correctSentence || !userSentence) {
+    return res.status(400).json({ success: false, message: "Sentences missing." });
+  }
+
+  let apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(500).json({ success: false, message: "Server error: API Key missing." });
+  
+  apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
+
+  // 🔥 YAHAN PROMPT UPDATE KIYA HAI: Polite, Encouraging aur Factual approach ke liye
+  const promptText = `
+    You are an extremely polite, encouraging, and supportive English grammar mentor.
+    The correct sentence is: "${correctSentence}"
+    The user wrote: "${userSentence}"
+
+    Task: Politely encourage the user, notice their grammatical fault, and introduce the correct grammar rule as a factual learning point.
+    
+    CRITICAL RULES:
+    1. Start with a very short, polite, and encouraging phrase (e.g., "Good try, par...", "Almost correct!...", "Koi baat nahi...").
+    2. DO NOT just point out missing or swapped words. Instead, introduce the underlying grammar rule as an interesting fact (e.g., "Grammar ka ek fact yaad rakhiye, jab bhi hum specific cheez ki baat karte hain, toh article 'the' lagana zaroori hota hai.").
+    3. Make it sound like a friendly tip, not a strict lecture. 
+    4. Keep it to exactly 2 short sentences. Be concise and empathetic.
+    5. Use simple "Hinglish" (A conversational mix of Hindi and English, written in the English alphabet).
+    6. DO NOT use any Markdown formatting like bold (**), italics (*), or bullet points. The output will be read aloud by a Text-to-Speech engine.
+  `;
+
+  try {
+    const queryParams = new URLSearchParams({ key: apiKey });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?${queryParams.toString()}`;
+
+    const payload = {
+      contents: [{ parts: [{ text: promptText }] }]
+    };
+
+    const response = await axios.post(url, payload, { headers: { "Content-Type": "application/json" } });
+
+    if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
+      // Markdown characters remove kar rahe hain taaki voice engine smoothly padhe
+      const rawExplanation = response.data.candidates[0].content.parts[0].text.trim();
+      const cleanExplanation = rawExplanation.replace(/[\*#_]/g, ''); 
+      
+      return res.json({ success: true, explanation: cleanExplanation });
+    } else {
+      throw new Error("Invalid response from Gemini.");
+    }
+  } catch (error) {
+    console.error("❌ AI Tutor Error:", error.message);
+    return res.status(503).json({ success: false, message: "AI Engine busy hai boss!" });
+  }
+});
+
+// 🔥 NAYA ROUTE: Premium AI Voice Generator (Like Gemini/Google Assistant)
+router.post("/speak", async (req, res) => {
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ success: false, message: "Text missing hai!" });
+  }
+
+  // NOTE: Ye Gemini wali key nahi hai, ye Google Cloud TTS ki API key hai.
+  // Google Cloud Console se Text-to-Speech API enable karke key nikalni hogi.
+  const GOOGLE_TTS_API_KEY = process.env.GOOGLE_TTS_API_KEY; 
+
+  if (!GOOGLE_TTS_API_KEY) {
+    return res.status(500).json({ success: false, message: "TTS API Key missing!" });
+  }
+
+  try {
+    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_API_KEY}`;
+
+    const payload = {
+      input: { text: text },
+      // 'en-IN-Neural2-A' ya 'en-IN-Neural2-D' premium Indian female/male voices hain
+      voice: { languageCode: "en-IN", name: "en-IN-Neural2-A" },
+      audioConfig: { 
+        audioEncoding: "MP3",
+        pitch: 0,
+        speakingRate: 0.95 // Thoda aaram se bolne ke liye
+      }
+    };
+
+    const response = await axios.post(url, payload);
+
+    if (response.data && response.data.audioContent) {
+      // Audio base64 format me return hota hai
+      return res.json({ success: true, audioBase64: response.data.audioContent });
+    } else {
+      throw new Error("Failed to generate audio");
+    }
+  } catch (error) {
+    console.error("❌ Google TTS Error:", error.response?.data || error.message);
+    return res.status(500).json({ success: false, message: "Aawaz generate nahi ho payi!" });
+  }
+});
+
+// 🔥 NAYA ROUTE: Conversational AI Tutor (Free Package Method)
+router.post("/voice-chat", async (req, res) => {
+  const { message, history } = req.body;
+
+  if (!message) return res.status(400).json({ success: false, message: "Message zaroori hai" });
+
+  let apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(500).json({ success: false, message: "Gemini Key missing" });
+  apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
+
+  const promptText = `
+    You are a friendly and encouraging spoken English tutor. 
+    The user is practicing speaking English with you.
+    User's message: "${message}"
+
+    Rules for your reply:
+    1. Reply exactly like a normal human having a conversation. 
+    2. Keep your response short (1 to 3 sentences maximum).
+    3. Ask a simple follow-up question at the end.
+    4. Gently correct massive grammar mistakes if any, otherwise just chat normally.
+    5. DO NOT use any Markdown formatting (* or #). Just plain text.
+  `;
+
+  try {
+    // 1. Text mangao Gemini se
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const geminiRes = await axios.post(geminiUrl, { contents: [{ parts: [{ text: promptText }] }] });
+    
+    let aiReplyText = geminiRes.data.candidates[0].content.parts[0].text.trim().replace(/[\*#_]/g, '');
+
+    // 2. Free package se aawaz (MP3) banao
+    let audioBase64 = null;
+    try {
+      audioBase64 = await googleTTS.getAudioBase64(aiReplyText, {
+        lang: 'en-IN', // Indian English Accent
+        slow: false,
+        host: 'https://translate.google.com',
+        timeout: 10000,
+      });
+    } catch (ttsError) {
+      console.error("Free TTS Error:", ttsError.message);
+    }
+
+    // 3. Frontend ko bhej do
+    return res.json({ success: true, reply: aiReplyText, audioBase64: audioBase64 });
+
+  } catch (error) {
+    console.error("Voice Chat Error:", error.message);
+    return res.status(503).json({ success: false, message: "Tutor unavailable" });
+  }
+});
 
 module.exports = router;
