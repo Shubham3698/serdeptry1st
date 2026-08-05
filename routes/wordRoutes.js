@@ -1,10 +1,8 @@
-
 const googleTTS = require('google-tts-api');
 const express = require("express");
-
 const router = express.Router();
 const axios = require("axios");
-const Vocab = require("../models/Word");
+const Vocab = require("../models/Word"); // Ensure yeh path sahi ho
 const PracticeStats = require("../models/english/PracticeStats");
 const SentenceReview = require("../models/english/SentenceReview");
 
@@ -19,17 +17,17 @@ router.post("/define", async (req, res) => {
   
   apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
-const promptText = `
-You are an elite English vocabulary coach. Analyze the English word "${word.trim()}". Return ONLY a valid JSON object.
-Rules:
-1. "partOfSpeech": Give exact grammar category
-2. "meaning": Give short Hindi meaning in Devanagari
-3. "explanation": Explain in very simple Hinglish (max 2 lines)
-4. "synonyms": Give minimum 8 synonyms (Comma separated, English only)
-5. "antonyms": Give minimum 6 antonyms (Comma separated, English only)
-6. "sentences": Give EXACTLY 3 short, single-line factual sentences using this word. STRICTLY NO paragraphs or long explanations. Each sentence must be a brief, bold, and universally true fact. Format exactly like this: "English sentence. (Hindi translation)" separated by \\n.
-Important: Response must be valid JSON only. Do not return markdown.
-`;
+  const promptText = `
+  You are an elite English vocabulary coach. Analyze the English word "${word.trim()}". Return ONLY a valid JSON object.
+  Rules:
+  1. "partOfSpeech": Give exact grammar category
+  2. "meaning": Give short Hindi meaning in Devanagari
+  3. "explanation": Explain in very simple Hinglish (max 2 lines)
+  4. "synonyms": Give minimum 8 synonyms (Comma separated, English only)
+  5. "antonyms": Give minimum 6 antonyms (Comma separated, English only)
+  6. "sentences": Give EXACTLY 3 short, single-line factual sentences using this word. STRICTLY NO paragraphs or long explanations. Each sentence must be a brief, bold, and universally true fact. Format exactly like this: "English sentence. (Hindi translation)" separated by \\n.
+  Important: Response must be valid JSON only. Do not return markdown.
+  `;
 
   const jsonSchema = {
     type: "object",
@@ -88,7 +86,8 @@ Important: Response must be valid JSON only. Do not return markdown.
         antonyms: parsedData.antonyms,
         sentences: parsedData.sentences,
         imageUrls: savedImageUrls, 
-        imageUrl: savedSingleImageUrl 
+        imageUrl: savedSingleImageUrl,
+        chatHistory: [] // Nai search pe history blank
       });
 
       await newVocabEntry.save();
@@ -104,7 +103,8 @@ Important: Response must be valid JSON only. Do not return markdown.
           antonyms: parsedData.antonyms,
           sentences: parsedData.sentences,
           imageUrls: savedImageUrls, 
-          imageUrl: savedSingleImageUrl 
+          imageUrl: savedSingleImageUrl,
+          chatHistory: []
         },
       });
     } else {
@@ -371,7 +371,6 @@ router.post("/update-images", async (req, res) => {
   }
 });
 
-// 🔥 NAYA ROUTE: AI Grammar Explainer (POLITE, ENCOURAGING & FACTUAL GRAMMAR)
 router.post("/grammar-explain", async (req, res) => {
   const { correctSentence, userSentence } = req.body;
 
@@ -384,7 +383,6 @@ router.post("/grammar-explain", async (req, res) => {
   
   apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
 
-  // 🔥 YAHAN PROMPT UPDATE KIYA HAI: Polite, Encouraging aur Factual approach ke liye
   const promptText = `
     You are an extremely polite, encouraging, and supportive English grammar mentor.
     The correct sentence is: "${correctSentence}"
@@ -394,10 +392,10 @@ router.post("/grammar-explain", async (req, res) => {
     
     CRITICAL RULES:
     1. Start with a very short, polite, and encouraging phrase (e.g., "Good try, par...", "Almost correct!...", "Koi baat nahi...").
-    2. DO NOT just point out missing or swapped words. Instead, introduce the underlying grammar rule as an interesting fact (e.g., "Grammar ka ek fact yaad rakhiye, jab bhi hum specific cheez ki baat karte hain, toh article 'the' lagana zaroori hota hai.").
+    2. DO NOT just point out missing or swapped words. Instead, introduce the underlying grammar rule as an interesting fact.
     3. Make it sound like a friendly tip, not a strict lecture. 
     4. Keep it to exactly 2 short sentences. Be concise and empathetic.
-    5. Use simple "Hinglish" (A conversational mix of Hindi and English, written in the English alphabet).
+    5. Use simple "Hinglish" (A conversational mix of Hindi and English).
     6. DO NOT use any Markdown formatting like bold (**), italics (*), or bullet points. The output will be read aloud by a Text-to-Speech engine.
   `;
 
@@ -412,7 +410,6 @@ router.post("/grammar-explain", async (req, res) => {
     const response = await axios.post(url, payload, { headers: { "Content-Type": "application/json" } });
 
     if (response.data && response.data.candidates && response.data.candidates[0].content.parts[0].text) {
-      // Markdown characters remove kar rahe hain taaki voice engine smoothly padhe
       const rawExplanation = response.data.candidates[0].content.parts[0].text.trim();
       const cleanExplanation = rawExplanation.replace(/[\*#_]/g, ''); 
       
@@ -426,7 +423,6 @@ router.post("/grammar-explain", async (req, res) => {
   }
 });
 
-// 🔥 NAYA ROUTE: Premium AI Voice Generator (Like Gemini/Google Assistant)
 router.post("/speak", async (req, res) => {
   const { text } = req.body;
 
@@ -434,12 +430,10 @@ router.post("/speak", async (req, res) => {
     return res.status(400).json({ success: false, message: "Text missing hai!" });
   }
 
-  // NOTE: Ye Gemini wali key nahi hai, ye Google Cloud TTS ki API key hai.
-  // Google Cloud Console se Text-to-Speech API enable karke key nikalni hogi.
   const GOOGLE_TTS_API_KEY = process.env.GOOGLE_TTS_API_KEY; 
 
   if (!GOOGLE_TTS_API_KEY) {
-    return res.status(500).json({ success: false, message: "TTS API Key missing!" });
+    return res.status(500).json({ success: false, message: "TTS API Key missing! .env check karo." });
   }
 
   try {
@@ -447,30 +441,27 @@ router.post("/speak", async (req, res) => {
 
     const payload = {
       input: { text: text },
-      // 'en-IN-Neural2-A' ya 'en-IN-Neural2-D' premium Indian female/male voices hain
-      voice: { languageCode: "en-IN", name: "en-IN-Neural2-A" },
+      voice: { languageCode: "en-IN", name: "en-IN-Neural2-D" },
       audioConfig: { 
         audioEncoding: "MP3",
-        pitch: 0,
-        speakingRate: 0.95 // Thoda aaram se bolne ke liye
+        pitch: -2.0,
+        speakingRate: 0.95 
       }
     };
 
     const response = await axios.post(url, payload);
 
     if (response.data && response.data.audioContent) {
-      // Audio base64 format me return hota hai
       return res.json({ success: true, audioBase64: response.data.audioContent });
     } else {
       throw new Error("Failed to generate audio");
     }
   } catch (error) {
     console.error("❌ Google TTS Error:", error.response?.data || error.message);
-    return res.status(500).json({ success: false, message: "Aawaz generate nahi ho payi!" });
+    return res.status(500).json({ success: false, message: "Aawaz generate nahi ho payi! API Key check karo." });
   }
 });
 
-// 🔥 NAYA ROUTE: Conversational AI Tutor (Free Package Method)
 router.post("/voice-chat", async (req, res) => {
   const { message, history } = req.body;
 
@@ -494,17 +485,15 @@ router.post("/voice-chat", async (req, res) => {
   `;
 
   try {
-    // 1. Text mangao Gemini se
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const geminiRes = await axios.post(geminiUrl, { contents: [{ parts: [{ text: promptText }] }] });
     
     let aiReplyText = geminiRes.data.candidates[0].content.parts[0].text.trim().replace(/[\*#_]/g, '');
 
-    // 2. Free package se aawaz (MP3) banao
     let audioBase64 = null;
     try {
       audioBase64 = await googleTTS.getAudioBase64(aiReplyText, {
-        lang: 'en-IN', // Indian English Accent
+        lang: 'en-IN',
         slow: false,
         host: 'https://translate.google.com',
         timeout: 10000,
@@ -513,12 +502,79 @@ router.post("/voice-chat", async (req, res) => {
       console.error("Free TTS Error:", ttsError.message);
     }
 
-    // 3. Frontend ko bhej do
     return res.json({ success: true, reply: aiReplyText, audioBase64: audioBase64 });
 
   } catch (error) {
     console.error("Voice Chat Error:", error.message);
     return res.status(503).json({ success: false, message: "Tutor unavailable" });
+  }
+});
+
+
+// 🔥 NAYA ROUTE: Word Follow-up Chat (Contextual, saves to DB)
+router.post("/followup-chat", async (req, res) => {
+  const { userId, word, message, history } = req.body;
+
+  if (!userId || !word || !message) {
+    return res.status(400).json({ success: false, message: "Missing data for chat." });
+  }
+
+  let apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(500).json({ success: false, message: "Gemini Key missing" });
+  apiKey = String(apiKey).replace(/[\r\n\t\s'"]/g, "").trim();
+
+  // 🧠 REFINED PROMPT: Deep context of the specific word
+  const promptText = `
+    You are an elite, modern English tutor. We are currently discussing the word: "${word}".
+    
+    The user is asking a follow-up question or making a statement related to this word:
+    User message: "${message}"
+
+    Rules for your response:
+    1. Answer the query directly and accurately. Be ready to explain slangs, phrasal verbs, idioms, or grammar rules related to "${word}".
+    2. Write in conversational "Hinglish" (a smooth blend of Hindi and English words written in the English alphabet).
+    3. Keep it concise, friendly, and easy to understand (max 2-3 sentences).
+    4. ABSOLUTELY NO markdown formatting (*, #, _, etc.). Use pure plain text so a TTS engine can read it properly.
+  `;
+
+  try {
+    // 1. Get Answer from AI
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const geminiRes = await axios.post(geminiUrl, { contents: [{ parts: [{ text: promptText }] }] });
+    
+    let aiReplyText = geminiRes.data.candidates[0].content.parts[0].text.trim().replace(/[\*#_`]/g, '');
+
+    // 2. Generate Audio (Free TTS)
+    let audioBase64 = null;
+    try {
+      audioBase64 = await googleTTS.getAudioBase64(aiReplyText, {
+        lang: 'en-IN',
+        slow: false,
+        host: 'https://translate.google.com',
+        timeout: 10000,
+      });
+    } catch (ttsError) {
+      console.error("Free TTS Error in Follow-up Chat:", ttsError.message);
+    }
+
+    // 3. Save Chat History in DB for this Word & User
+    try {
+      const vocabDoc = await Vocab.findOne({ userId, word: word.trim().toLowerCase() });
+      if (vocabDoc) {
+        vocabDoc.chatHistory.push({ role: 'user', text: message });
+        vocabDoc.chatHistory.push({ role: 'ai', text: aiReplyText });
+        await vocabDoc.save();
+      }
+    } catch (dbError) {
+      console.error("Failed to save chat to DB:", dbError.message);
+      // We continue even if DB save fails so user gets response
+    }
+
+    return res.json({ success: true, reply: aiReplyText, audioBase64: audioBase64 });
+
+  } catch (error) {
+    console.error("Followup Chat Error:", error.message);
+    return res.status(503).json({ success: false, message: "AI Teacher unavailable" });
   }
 });
 
