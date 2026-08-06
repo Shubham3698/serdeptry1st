@@ -10,6 +10,7 @@ const admin = require("../config/firebaseAdmin");
 const EnglishUser = require("../models/EnglishUser");
 
 const PersonalVault = require("../models/english/PersonalVault");
+const Notification = require("../models/english/Notification");
 
 // ☁️ CLOUDINARY CONFIGURATION
 cloudinary.config({
@@ -291,7 +292,7 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
     });
   }
 });
-// ✅ 3. 🗳️ VOTE TOGGLE
+// ✅ 3. 🗳️ VOTE TOGGLE (Updated with Notifications)
 router.post("/vote-word/:postId/:wordId", async (req, res) => {
   try {
     const { postId, wordId } = req.params;
@@ -302,32 +303,43 @@ router.post("/vote-word/:postId/:wordId", async (req, res) => {
     const post = await EnglishPost.findById(postId);
     if (!post) return res.status(404).json({ message: "Post nahi mili!" });
 
-    // 🔥 DECK KE ANDAR WORD DHUNDO
     const wordEntry = post.vocabData.id(wordId);
     if (!wordEntry) return res.status(404).json({ message: "Word deck mein nahi hai!" });
 
-    // TOGGLE LOGIC
     const voteIndex = wordEntry.votedBy.indexOf(email);
+    let isLiking = false;
+
     if (voteIndex > -1) {
       wordEntry.votedBy.splice(voteIndex, 1); // Unlike
     } else {
       wordEntry.votedBy.push(email); // Like
+      isLiking = true;
     }
 
-    // UPDATE COUNT
     wordEntry.voteCount = wordEntry.votedBy.length;
-
-    // Save triggers the Pre-save middleware (Jo tune schema mein likha hai)
     await post.save();
+
+    // 🔥 CREATE LIKE NOTIFICATION 🔥
+    if (isLiking && post.userEmail && post.userEmail !== email) {
+      const newNotif = new Notification({
+        recipientEmail: post.userEmail,
+        senderEmail: email,
+        senderName: email.split('@')[0], // Ya agar name ho toh wo
+        type: 'LIKE',
+        postId: post._id,
+        word: wordEntry.word,
+        message: "liked your signal 🔥"
+      });
+      await newNotif.save();
+    }
 
     res.json({ 
       success: true, 
       voteCount: wordEntry.voteCount, 
-      isVoted: wordEntry.votedBy.includes(email) 
+      isVoted: isLiking 
     });
 
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: "Server pe lafda ho gaya!" });
   }
 });
@@ -532,6 +544,22 @@ router.get("/all", async (req, res) => {
   }
 });
 
+router.get("/single/:id", async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const post = await EnglishPost.findById(postId);
+    
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Signal/Post not found" });
+    }
+    
+    res.status(200).json({ success: true, post: post });
+  } catch (err) {
+    console.error("🚨 Single Post Fetch Error:", err.message);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
 // ✅ 6. GET MY POSTS
 router.get("/my-posts", async (req, res) => {
   try {
@@ -546,27 +574,47 @@ router.get("/my-posts", async (req, res) => {
 // ✅ 7. ADD COMMENT
 // ✅ 7. ADD COMMENT (With Image Upload)
 // 🔥 "upload.single('image')" add kiya taaki multer file ko intercept kare
+// ✅ 7. ADD COMMENT (Updated with Notifications)
 router.post("/comment/:postId", upload.single("image"), async (req, res) => {
   try {
     const post = await EnglishPost.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // 🔥 Cloudinary se aayi hui image ka URL req.file.path me hoga
     const imageUrl = req.file ? req.file.path : null;
+    const commenterName = req.body.name || "A learner";
+    const commenterEmail = req.body.email; // Frontend se email zaroor bhejna
 
     post.comments.push({ 
-      name: req.body.name, 
-      text: req.body.text || "", // Agar sirf photo bheji hai toh text empty hoga
+      name: commenterName, 
+      text: req.body.text || "", 
       image: imageUrl 
     });
-
     await post.save();
+
+    // 🔥 CREATE COMMENT NOTIFICATION 🔥
+    if (post.userEmail && post.userEmail !== commenterEmail) {
+      const notifyText = req.body.text ? `commented: "${req.body.text}"` : `sent an image comment`;
+      
+      const newNotif = new Notification({
+        recipientEmail: post.userEmail,
+        senderEmail: commenterEmail,
+        senderName: commenterName,
+        type: 'COMMENT',
+        postId: post._id,
+        word: post.word || (post.vocabData && post.vocabData[0]?.word),
+        message: notifyText
+      });
+      await newNotif.save();
+
+      // (Optional) Yahan aap apna admin.messaging().sendEachForMulticast(message) 
+      // call kar sakte hain taaki phone pe push notification chali jaye
+    }
+
     res.json({ success: true, comments: post.comments });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 // ✅ 8. DELETE POST
 router.delete("/delete/:id", async (req, res) => {
   try {

@@ -4,6 +4,7 @@ const admin = require("../config/firebaseAdmin");
 const EnglishUser = require("../models/EnglishUser");
 const EnglishPost = require("../models/EnglishPost");
 const HiddenSignal = require("../models/HiddenSignal"); // Naya model jo dismiss track karega
+const Notification = require("../models/english/Notification");
 
 // 🎯 Route 1: Token Save Karo (Existing)
 router.post("/save-token", async (req, res) => {
@@ -35,38 +36,38 @@ const getTimeAgo = (date) => {
 // 🎯 Route 2: Latest Notifications (With Filter for Hidden Posts)
 router.get("/latest", async (req, res) => {
   const { email } = req.query; 
+  if (!email) return res.status(400).json({ success: false });
+
   try {
+    // 1. User ki dismiss ki hui IDs
     let hiddenIds = [];
-    
-    // 1. User ke dismiss kiye hue IDs nikaalo
-    if (email) {
-      const hiddenRecord = await HiddenSignal.findOne({ userEmail: email });
-      if (hiddenRecord) {
-        hiddenIds = hiddenRecord.hiddenPostIds;
-      }
+    const hiddenRecord = await HiddenSignal.findOne({ userEmail: email });
+    if (hiddenRecord) {
+      hiddenIds = hiddenRecord.hiddenPostIds; // Notification IDs ko hide karne ke liye
     }
 
-    // 2. Filtered posts fetch karo
-    const latestPosts = await EnglishPost.find({ _id: { $nin: hiddenIds } })
-      .sort({ createdAt: -1 })
-      .limit(15);
+    // 2. Ab Posts nahi, balki REAL Notifications fetch karo
+    const latestNotifs = await Notification.find({ 
+      recipientEmail: email,
+      _id: { $nin: hiddenIds } 
+    })
+    .sort({ createdAt: -1 })
+    .limit(15);
 
-    const signals = latestPosts.map(post => {
-      // ✅ Word fallback logic
-      const displayWord = post.word || (post.vocabData && post.vocabData[0]?.word) || "New Post";
-      
-      // ✅ Title fallback logic (Agar title null hai toh 'Vocabulary Update' dikhayega)
-      const displayTitle = post.title || "Vocabulary Update";
-      
-      const displayUser = post.userName || (post.userEmail ? post.userEmail.split('@')[0] : "Learner");
+    // 3. Frontend format mein transform karo
+    const signals = latestNotifs.map(notif => {
+      let titlePrefix = "Intel";
+      if (notif.type === 'LIKE') titlePrefix = "New Like ❤️";
+      if (notif.type === 'COMMENT') titlePrefix = "New Comment 💬";
+      if (notif.type === 'NEW_POST') titlePrefix = "New Signal 📡";
 
       return {
-        id: post._id.toString(),
-        userName: displayUser,
-        title: displayTitle, // 🆕 Title add kar diya
-        word: displayWord,
-        postId: post._id.toString(),
-        time: getTimeAgo(post.createdAt) 
+        id: notif._id.toString(), // Notification ka unique ID
+        userName: notif.senderName,
+        title: titlePrefix,
+        word: notif.message, // "liked your signal" ya "commented: text"
+        postId: notif.postId, // 🔥 Ye click hone par SinglePostView pe le jayega
+        time: getTimeAgo(notif.createdAt) 
       };
     });
 
