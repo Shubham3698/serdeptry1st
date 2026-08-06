@@ -33,28 +33,33 @@ const getTimeAgo = (date) => {
   return "Just now";
 };
 
-// 🎯 Route 2: Latest Notifications (With Filter for Hidden Posts)
+// 🎯 Route: Latest Notifications
 router.get("/latest", async (req, res) => {
   const { email } = req.query; 
   if (!email) return res.status(400).json({ success: false });
 
   try {
-    // 1. User ki dismiss ki hui IDs
+    // ❌ REMOVED the duplicate require statements from here
+
     let hiddenIds = [];
     const hiddenRecord = await HiddenSignal.findOne({ userEmail: email });
     if (hiddenRecord) {
-      hiddenIds = hiddenRecord.hiddenPostIds; // Notification IDs ko hide karne ke liye
+      hiddenIds = hiddenRecord.hiddenPostIds;
     }
 
-    // 2. Ab Posts nahi, balki REAL Notifications fetch karo
+    // 1. Posts fetch karo
     const latestNotifs = await Notification.find({ 
       recipientEmail: email,
       _id: { $nin: hiddenIds } 
-    })
-    .sort({ createdAt: -1 })
-    .limit(15);
+    }).sort({ createdAt: -1 }).limit(15);
 
-    // 3. Frontend format mein transform karo
+    // 2. 🔥 CHECK UNREAD COUNT 🔥
+    const unreadCount = await Notification.countDocuments({
+      recipientEmail: email,
+      isRead: false,
+      _id: { $nin: hiddenIds }
+    });
+
     const signals = latestNotifs.map(notif => {
       let titlePrefix = "Intel";
       if (notif.type === 'LIKE') titlePrefix = "New Like ❤️";
@@ -62,17 +67,19 @@ router.get("/latest", async (req, res) => {
       if (notif.type === 'NEW_POST') titlePrefix = "New Signal 📡";
 
       return {
-        id: notif._id.toString(), // Notification ka unique ID
+        id: notif._id.toString(),
         userName: notif.senderName,
         title: titlePrefix,
-        word: notif.message, // "liked your signal" ya "commented: text"
-        postId: notif.postId, // 🔥 Ye click hone par SinglePostView pe le jayega
-        time: getTimeAgo(notif.createdAt) 
+        word: notif.message,
+        postId: notif.postId,
+        time: getTimeAgo(notif.createdAt),
+        isRead: notif.isRead // Frontend ko batao ki read hai ya nahi
       };
     });
 
     res.status(200).json({
       success: true,
+      hasUnread: unreadCount > 0, // 🔥 Ye Red Dot ko on karega
       notifications: signals
     });
   } catch (err) {
@@ -80,6 +87,43 @@ router.get("/latest", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
+// 🎯 Route: Mark all as Read
+router.post("/mark-read", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false });
+
+  try {
+    // ❌ REMOVED the duplicate require statement from here too
+    
+    // Saari unread notifications ko true kar do
+    await Notification.updateMany(
+      { recipientEmail: email, isRead: false },
+      { $set: { isRead: true } }
+    );
+    res.json({ success: true, message: "Marked as read" });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+// 🎯 Route: Mark all as Read
+router.post("/mark-read", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false });
+
+  try {
+    const Notification = require("../models/Notification");
+    // Saari unread notifications ko true kar do
+    await Notification.updateMany(
+      { recipientEmail: email, isRead: false },
+      { $set: { isRead: true } }
+    );
+    res.json({ success: true, message: "Marked as read" });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+
 // 🎯 Route 3: Single Signal Dismiss (X Button Logic)
 router.post("/dismiss", async (req, res) => {
   const { email, postId } = req.body;
