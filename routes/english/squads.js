@@ -6,6 +6,7 @@ const SquadMessage = require('../../models/english/SquadMessage');
 // 🔥 NAYE IMPORTS: Notifications bhejne ke liye
 const admin = require('../../config/firebaseAdmin'); 
 const EnglishUser = require('../../models/EnglishUser'); 
+const Notification = require('../../models/english/Notification'); // 👈 YE MISSING THA!
 
 // 1. Create a new Squad
 router.post('/create', async (req, res) => {
@@ -36,7 +37,7 @@ router.post('/:squadId/add-member', async (req, res) => {
   }
 });
 
-// 3. Send a Message (🔥 UPDATED FOR REPLIES & PUSH NOTIFICATIONS)
+// 3. Send a Message (🔥 PERFECT LOGIC FOR DB + PUSH NOTIFICATIONS)
 router.post('/:squadId/message', async (req, res) => {
   try {
     const { senderEmail, type, text, postId, replyToId, replyToText, replyToUser } = req.body;
@@ -57,28 +58,55 @@ router.post('/:squadId/message', async (req, res) => {
     await newMessage.save();
 
     // --------------------------------------------------------
-    // 🔥 FIREBASE PUSH NOTIFICATION LOGIC START 🔥
+    // 🔥 FIREBASE PUSH & DB NOTIFICATION LOGIC START 🔥
     // --------------------------------------------------------
     try {
-      // a. Squad dhundo taaki pata chale kis kisko notification bhejni hai
       const squad = await Squad.findById(req.params.squadId);
       
       if (squad) {
-        // b. Jisne message bheja hai, usko notification mat bhejo
         const recipientEmails = squad.members.filter(email => email !== senderEmail);
-if (recipientEmails.length > 0) {
-  const notificationsToSave = recipientEmails.map(email => ({
-    recipientEmail: email,
-    senderEmail: senderEmail,
-    senderName: senderEmail.split('@')[0],
-    type: 'CHAT',
-    postId: squad._id.toString(), // Chat ke case me postId ki jagah squadId save kar rahe hain
-    word: squad.name,             // Word ki jagah Squad ka naam
-    message: type === "post" ? "Shared a Flashcard 🎯" : text
-  }));
-  await Notification.insertMany(notificationsToSave);
-}
+        
+        if (recipientEmails.length > 0) {
+          
+          // 🔥 STEP A: DATABASE MEIN NOTIFICATION SAVE KARO (Panel me dikhane ke liye)
+          const notificationsToSave = recipientEmails.map(email => ({
+            recipientEmail: email,
+            senderEmail: senderEmail,
+            senderName: senderEmail.split('@')[0],
+            type: 'CHAT',
+            postId: squad._id.toString(), // Squad ID as postId
+            word: squad.name,             // Squad ka naam
+            message: type === "post" ? "Shared a Flashcard 🎯" : text
+          }));
+          await Notification.insertMany(notificationsToSave);
 
+          // 🔥 STEP B: FIREBASE SE PHONE PAR PUSH BHEJO (Lock screen notification ke liye)
+          const users = await EnglishUser.find({ 
+            email: { $in: recipientEmails },
+            fcmToken: { $exists: true, $ne: null, $ne: "" } 
+          });
+          
+          const tokens = users.map(u => u.fcmToken);
+
+          if (tokens.length > 0) {
+            const senderName = senderEmail.split('@')[0];
+            const messageBody = type === "post" ? "Shared a Flashcard 🎯" : text;
+
+            const pushMessage = {
+              notification: {
+                title: `${squad.name} 💬`,
+                body: `${senderName}: ${messageBody}`,
+              },
+              data: {
+                squadId: squad._id.toString(), 
+                type: "chat_message"
+              },
+              tokens: tokens,
+            };
+
+            await admin.messaging().sendEachForMulticast(pushMessage);
+          }
+        }
       }
     } catch (pushErr) {
       console.error("🚨 Chat Push Notification Error:", pushErr.message);
