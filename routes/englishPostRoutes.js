@@ -294,54 +294,36 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
 });
 // ✅ 3. 🗳️ VOTE TOGGLE (Updated with Notifications)
 router.post("/vote-word/:postId/:wordId", async (req, res) => {
-  try {
-    const { postId, wordId } = req.params;
-    const { email } = req.body;
+  // ... (Pura upar ka code waise hi rahega)
 
-    if (!email) return res.status(400).json({ message: "Email missing bhai!" });
-
-    const post = await EnglishPost.findById(postId);
-    if (!post) return res.status(404).json({ message: "Post nahi mili!" });
-
-    const wordEntry = post.vocabData.id(wordId);
-    if (!wordEntry) return res.status(404).json({ message: "Word deck mein nahi hai!" });
-
-    const voteIndex = wordEntry.votedBy.indexOf(email);
-    let isLiking = false;
-
-    if (voteIndex > -1) {
-      wordEntry.votedBy.splice(voteIndex, 1); // Unlike
-    } else {
-      wordEntry.votedBy.push(email); // Like
-      isLiking = true;
-    }
-
-    wordEntry.voteCount = wordEntry.votedBy.length;
-    await post.save();
-
-    // 🔥 CREATE LIKE NOTIFICATION 🔥
-    if (isLiking && post.userEmail && post.userEmail !== email) {
-      const newNotif = new Notification({
-        recipientEmail: post.userEmail,
-        senderEmail: email,
-        senderName: email.split('@')[0], // Ya agar name ho toh wo
-        type: 'LIKE',
-        postId: post._id,
-        word: wordEntry.word,
-        message: "liked your signal 🔥"
-      });
-      await newNotif.save();
-    }
-
-    res.json({ 
-      success: true, 
-      voteCount: wordEntry.voteCount, 
-      isVoted: isLiking 
+  // 🔥 CREATE LIKE NOTIFICATION 🔥
+  if (isLiking && post.userEmail && post.userEmail !== email) {
+    const newNotif = new Notification({
+      recipientEmail: post.userEmail,
+      senderEmail: email,
+      senderName: email.split('@')[0], 
+      type: 'LIKE',
+      postId: post._id,
+      word: wordEntry.word,
+      message: "liked your signal 🔥"
     });
+    await newNotif.save();
 
-  } catch (err) {
-    res.status(500).json({ message: "Server pe lafda ho gaya!" });
+    // 🚀🚀 YAHAN PUSH NOTIFICATION BHEJO 🚀🚀
+    await sendPushNotification(
+      post.userEmail,                     // Jisko bhejna hai
+      "New Like ❤️",                    // Title
+      `@${email.split('@')[0]} liked: "${wordEntry.word}"`, // Body
+      post._id.toString()                 // Post ID (Click hone par yahan aayega)
+    );
   }
+
+  res.json({ 
+    success: true, 
+    voteCount: wordEntry.voteCount, 
+    isVoted: isLiking 
+  });
+  // ... (Baaki error catch waisa hi)
 });
 
 router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
@@ -571,49 +553,30 @@ router.get("/my-posts", async (req, res) => {
   }
 });
 
-// ✅ 7. ADD COMMENT
-// ✅ 7. ADD COMMENT (With Image Upload)
-// 🔥 "upload.single('image')" add kiya taaki multer file ko intercept kare
 // ✅ 7. ADD COMMENT (Updated with Notifications)
 router.post("/comment/:postId", upload.single("image"), async (req, res) => {
-  try {
-    const post = await EnglishPost.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+  // ... (Upar ka comment save aur Notification.save() ka code as it is)
 
-    const imageUrl = req.file ? req.file.path : null;
-    const commenterName = req.body.name || "A learner";
-    const commenterEmail = req.body.email; // Frontend se email zaroor bhejna
-
-    post.comments.push({ 
-      name: commenterName, 
-      text: req.body.text || "", 
-      image: imageUrl 
+  // 🔥 CREATE COMMENT NOTIFICATION 🔥
+  if (post.userEmail && post.userEmail !== commenterEmail) {
+    const notifyText = req.body.text ? `commented: "${req.body.text}"` : `sent an image comment`;
+    
+    const newNotif = new Notification({
+      // ... (MongoDB save wala code)
     });
-    await post.save();
+    await newNotif.save();
 
-    // 🔥 CREATE COMMENT NOTIFICATION 🔥
-    if (post.userEmail && post.userEmail !== commenterEmail) {
-      const notifyText = req.body.text ? `commented: "${req.body.text}"` : `sent an image comment`;
-      
-      const newNotif = new Notification({
-        recipientEmail: post.userEmail,
-        senderEmail: commenterEmail,
-        senderName: commenterName,
-        type: 'COMMENT',
-        postId: post._id,
-        word: post.word || (post.vocabData && post.vocabData[0]?.word),
-        message: notifyText
-      });
-      await newNotif.save();
-
-      // (Optional) Yahan aap apna admin.messaging().sendEachForMulticast(message) 
-      // call kar sakte hain taaki phone pe push notification chali jaye
-    }
-
-    res.json({ success: true, comments: post.comments });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    // 🚀🚀 YAHAN PUSH NOTIFICATION BHEJO 🚀🚀
+    await sendPushNotification(
+      post.userEmail, 
+      "New Comment 💬", 
+      `@${commenterName} ${notifyText}`, 
+      post._id.toString()
+    );
   }
+
+  res.json({ success: true, comments: post.comments });
+  // ...
 });
 // ✅ 8. DELETE POST
 router.delete("/delete/:id", async (req, res) => {
