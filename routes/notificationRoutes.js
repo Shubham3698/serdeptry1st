@@ -60,23 +60,26 @@ router.get("/latest", async (req, res) => {
       _id: { $nin: hiddenIds }
     });
 
-    const signals = latestNotifs.map(notif => {
+const signals = latestNotifs.map(notif => {
       let titlePrefix = "Intel";
       if (notif.type === 'LIKE') titlePrefix = "New Like ❤️";
       if (notif.type === 'COMMENT') titlePrefix = "New Comment 💬";
       if (notif.type === 'NEW_POST') titlePrefix = "New Signal 📡";
+      
+      // 🔥 Naya Chat Logic
+      if (notif.type === 'CHAT') titlePrefix = `${notif.word} 💬`;
 
       return {
         id: notif._id.toString(),
-        userName: notif.senderName,
+        userName: notif.senderName || "Learner",
         title: titlePrefix,
-        word: notif.message,
-        postId: notif.postId,
+        word: notif.message || "Activity update", // Chat ka text yahan aayega
+        postId: notif.postId, // Ye ab Squad ID hogi chat ke case me
+        type: notif.type,     // 🔥 Frontend ko batana padega ki ye Chat hai
         time: getTimeAgo(notif.createdAt),
-        isRead: notif.isRead // Frontend ko batao ki read hai ya nahi
+        isRead: notif.isRead
       };
     });
-
     res.status(200).json({
       success: true,
       hasUnread: unreadCount > 0, // 🔥 Ye Red Dot ko on karega

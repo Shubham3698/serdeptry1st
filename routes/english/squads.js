@@ -3,6 +3,10 @@ const router = express.Router();
 const Squad = require('../../models/english/Squad');
 const SquadMessage = require('../../models/english/SquadMessage');
 
+// 🔥 NAYE IMPORTS: Notifications bhejne ke liye
+const admin = require('../../config/firebaseAdmin'); 
+const EnglishUser = require('../../models/EnglishUser'); 
+
 // 1. Create a new Squad
 router.post('/create', async (req, res) => {
   try {
@@ -32,26 +36,55 @@ router.post('/:squadId/add-member', async (req, res) => {
   }
 });
 
-// 3. Send a Message (🔥 UPDATED FOR REPLIES)
+// 3. Send a Message (🔥 UPDATED FOR REPLIES & PUSH NOTIFICATIONS)
 router.post('/:squadId/message', async (req, res) => {
   try {
-    // 🔥 Req.body se reply wale fields nikaale
     const { senderEmail, type, text, postId, replyToId, replyToText, replyToUser } = req.body;
     
+    // 1. Message Database me save karo
     const newMessage = new SquadMessage({
       squadId: req.params.squadId,
       senderEmail,
       type,
       text,
       postId,
-      // 🔥 Naye fields yahan database me save honge
       replyToId: replyToId || null,
       replyToText: replyToText || null,
       replyToUser: replyToUser || null,
-      readBy: [senderEmail] // Jisne bheja, usne toh padh hi liya
+      readBy: [senderEmail] 
     });
     
     await newMessage.save();
+
+    // --------------------------------------------------------
+    // 🔥 FIREBASE PUSH NOTIFICATION LOGIC START 🔥
+    // --------------------------------------------------------
+    try {
+      // a. Squad dhundo taaki pata chale kis kisko notification bhejni hai
+      const squad = await Squad.findById(req.params.squadId);
+      
+      if (squad) {
+        // b. Jisne message bheja hai, usko notification mat bhejo
+        const recipientEmails = squad.members.filter(email => email !== senderEmail);
+if (recipientEmails.length > 0) {
+  const notificationsToSave = recipientEmails.map(email => ({
+    recipientEmail: email,
+    senderEmail: senderEmail,
+    senderName: senderEmail.split('@')[0],
+    type: 'CHAT',
+    postId: squad._id.toString(), // Chat ke case me postId ki jagah squadId save kar rahe hain
+    word: squad.name,             // Word ki jagah Squad ka naam
+    message: type === "post" ? "Shared a Flashcard 🎯" : text
+  }));
+  await Notification.insertMany(notificationsToSave);
+}
+
+      }
+    } catch (pushErr) {
+      console.error("🚨 Chat Push Notification Error:", pushErr.message);
+    }
+    // --------------------------------------------------------
+
     res.json({ success: true, message: newMessage });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -61,16 +94,15 @@ router.post('/:squadId/message', async (req, res) => {
 // 4. Get all messages (And Mark them as Read)
 router.get('/:squadId/messages', async (req, res) => {
   try {
-    const { email } = req.query; // UI se user ka email aayega (Query params)
+    const { email } = req.query; 
 
-    // Jaise hi user ne chat kholi, uske liye messages ko 'read' mark kar do
     if (email) {
       await SquadMessage.updateMany(
         { 
           squadId: req.params.squadId, 
-          readBy: { $ne: email } // Sirf wo update karo jisme ye email nahi hai
+          readBy: { $ne: email } 
         },
-        { $push: { readBy: email } } // Email ko readBy array me daal do
+        { $push: { readBy: email } } 
       );
     }
 
@@ -89,11 +121,10 @@ router.get('/user/:email', async (req, res) => {
     const userEmail = req.params.email;
     const squads = await Squad.find({ members: userEmail }).sort({ createdAt: -1 }).lean();
 
-    // Har squad ke liye unread count calculate karo
     const squadsWithUnreadCount = await Promise.all(squads.map(async (squad) => {
       const unreadCount = await SquadMessage.countDocuments({
         squadId: squad._id,
-        readBy: { $ne: userEmail } // Un messages ko gino jisme user ka email readBy me nahi hai
+        readBy: { $ne: userEmail } 
       });
       
       return { ...squad, unreadCount };
