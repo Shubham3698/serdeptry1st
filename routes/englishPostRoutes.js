@@ -363,6 +363,30 @@ router.post("/vote-word/:postId/:wordId", async (req, res) => {
     res.status(500).json({ message: "Server pe lafda ho gaya!" });
   }
 });
+
+// ✅ GET EXTRA WORD DETAILS DIRECTLY FROM DATABASE
+router.get("/word-details", async (req, res) => {
+  try {
+    const { word, email } = req.query;
+    if (!word || !email) return res.status(400).json({ success: false });
+
+    // 🔥 NOTE: Yahan apne Vocab model ka sahi path daalna (e.g., "../models/Word" ya "../models/Vocab")
+    const Vocab = require("../models/Word"); 
+    
+    // Jisne post banayi hai (email), uski history se exact word nikal rahe hain
+    const wordData = await Vocab.findOne({ word: word.toLowerCase().trim(), userId: email });
+    
+    if (wordData) {
+      res.json({ success: true, data: wordData });
+    } else {
+      res.json({ success: false, message: "Not found in DB" });
+    }
+  } catch (err) {
+    console.error("Direct Fetch Error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
 router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
   try {
     const { postId, wordId } = req.params;
