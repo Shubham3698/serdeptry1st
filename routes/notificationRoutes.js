@@ -3,28 +3,10 @@ const router = express.Router();
 const admin = require("../config/firebaseAdmin");
 const EnglishUser = require("../models/EnglishUser");
 const EnglishPost = require("../models/EnglishPost");
-const HiddenSignal = require("../models/HiddenSignal");
-const Notification = require("../models/english/Notification"); 
+const HiddenSignal = require("../models/HiddenSignal"); // Naya model jo dismiss track karega
+const Notification = require("../models/english/Notification");
 
-// 📡 Reusable Push Notification Helper Function (FCM ke liye)
-const sendPushNotification = async (recipientEmail, title, body, postId) => {
-  try {
-    const recipientUser = await EnglishUser.findOne({ email: recipientEmail });
-    if (recipientUser && recipientUser.fcmToken) {
-      const message = {
-        token: recipientUser.fcmToken,
-        notification: { title, body },
-        data: { postId: postId ? postId.toString() : "" }
-      };
-      await admin.messaging().send(message);
-      console.log("Push Notification Sent Successfully! 🚀");
-    }
-  } catch (error) {
-    console.error("Error sending Firebase push notification:", error);
-  }
-};
-
-// 🎯 Route 1: Token Save Karo
+// 🎯 Route 1: Token Save Karo (Existing)
 router.post("/save-token", async (req, res) => {
   const { email, fcmToken } = req.body;
   try {
@@ -51,12 +33,14 @@ const getTimeAgo = (date) => {
   return "Just now";
 };
 
-// 🎯 Route 2: Latest Notifications
+// 🎯 Route: Latest Notifications
 router.get("/latest", async (req, res) => {
   const { email } = req.query; 
   if (!email) return res.status(400).json({ success: false });
 
   try {
+    // ❌ REMOVED the duplicate require statements from here
+
     let hiddenIds = [];
     const hiddenRecord = await HiddenSignal.findOne({ userEmail: email });
     if (hiddenRecord) {
@@ -89,13 +73,13 @@ router.get("/latest", async (req, res) => {
         word: notif.message,
         postId: notif.postId,
         time: getTimeAgo(notif.createdAt),
-        isRead: notif.isRead 
+        isRead: notif.isRead // Frontend ko batao ki read hai ya nahi
       };
     });
 
     res.status(200).json({
       success: true,
-      hasUnread: unreadCount > 0, 
+      hasUnread: unreadCount > 0, // 🔥 Ye Red Dot ko on karega
       notifications: signals
     });
   } catch (err) {
@@ -104,12 +88,31 @@ router.get("/latest", async (req, res) => {
   }
 });
 
-// 🎯 Route 3: Mark all as Read (Duplicate hata diya gaya hai)
+// 🎯 Route: Mark all as Read
 router.post("/mark-read", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ success: false });
 
   try {
+    // ❌ REMOVED the duplicate require statement from here too
+    
+    // Saari unread notifications ko true kar do
+    await Notification.updateMany(
+      { recipientEmail: email, isRead: false },
+      { $set: { isRead: true } }
+    );
+    res.json({ success: true, message: "Marked as read" });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+// 🎯 Route: Mark all as Read
+router.post("/mark-read", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false });
+
+  try {
+    const Notification = require("../models/Notification");
     // Saari unread notifications ko true kar do
     await Notification.updateMany(
       { recipientEmail: email, isRead: false },
@@ -121,7 +124,7 @@ router.post("/mark-read", async (req, res) => {
   }
 });
 
-// 🎯 Route 4: Single Signal Dismiss (X Button Logic)
+// 🎯 Route 3: Single Signal Dismiss (X Button Logic)
 router.post("/dismiss", async (req, res) => {
   const { email, postId } = req.body;
   if (!email || !postId) return res.status(400).json({ success: false });
@@ -129,7 +132,7 @@ router.post("/dismiss", async (req, res) => {
   try {
     await HiddenSignal.findOneAndUpdate(
       { userEmail: email },
-      { $addToSet: { hiddenPostIds: postId } }, 
+      { $addToSet: { hiddenPostIds: postId } }, // $addToSet se duplicate nahi hoga
       { upsert: true }
     );
     res.json({ success: true, message: "Signal dismissed permanently! 🛸" });
@@ -138,12 +141,13 @@ router.post("/dismiss", async (req, res) => {
   }
 });
 
-// 🎯 Route 5: Clear All Notifications (Nuke All Logic)
+// 🎯 Route 4: Clear All Notifications (Nuke All Logic)
 router.post("/clear-all", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ success: false });
 
   try {
+    // Current saari posts ki IDs nikaalo (latest 50 tak)
     const allPosts = await EnglishPost.find().select('_id').limit(50);
     const allIds = allPosts.map(p => p._id);
 
@@ -158,7 +162,4 @@ router.post("/clear-all", async (req, res) => {
   }
 });
 
-// 🔥 SMART EXPORT: Isse aapka app.js crash nahi hoga!
 module.exports = router;
-// Helper function ko router ke sath attach kar diya taaki doosri files isko use kar sakein
-module.exports.sendPushNotification = sendPushNotification;
