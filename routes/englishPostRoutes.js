@@ -292,7 +292,6 @@ router.put("/update/:id", upload.array("images", 20), async (req, res) => {
     });
   }
 });
-// ✅ 3. 🗳️ VOTE TOGGLE (Updated with Notifications)
 router.post("/vote-word/:postId/:wordId", async (req, res) => {
   try {
     const { postId, wordId } = req.params;
@@ -319,18 +318,39 @@ router.post("/vote-word/:postId/:wordId", async (req, res) => {
     wordEntry.voteCount = wordEntry.votedBy.length;
     await post.save();
 
-    // 🔥 CREATE LIKE NOTIFICATION 🔥
+    // 🔥 1. DATABASE NOTIFICATION SAVE KAREIN
     if (isLiking && post.userEmail && post.userEmail !== email) {
+      const senderName = email.split('@')[0];
       const newNotif = new Notification({
         recipientEmail: post.userEmail,
         senderEmail: email,
-        senderName: email.split('@')[0], // Ya agar name ho toh wo
+        senderName: senderName,
         type: 'LIKE',
         postId: post._id,
         word: wordEntry.word,
-        message: "liked your signal 🔥"
+        message: "liked your signal ❤️"
       });
       await newNotif.save();
+
+      // 🔥 2. FIREBASE PUSH NOTIFICATION (APP BAND HONE PAR BHI AAYEGI) 🔥
+      try {
+        const recipientUser = await EnglishUser.findOne({ email: post.userEmail });
+        if (recipientUser && recipientUser.fcmToken) {
+          const message = {
+            notification: {
+              title: "New Like ❤️",
+              body: `@${senderName} liked your word "${wordEntry.word}"`,
+            },
+            data: {
+              postId: post._id.toString(),
+            },
+            token: recipientUser.fcmToken,
+          };
+          await admin.messaging().send(message);
+        }
+      } catch (pushErr) {
+        console.error("Like Push Error:", pushErr.message);
+      }
     }
 
     res.json({ 
@@ -343,7 +363,6 @@ router.post("/vote-word/:postId/:wordId", async (req, res) => {
     res.status(500).json({ message: "Server pe lafda ho gaya!" });
   }
 });
-
 router.post("/update-word-stat/:postId/:wordId", async (req, res) => {
   try {
     const { postId, wordId } = req.params;
