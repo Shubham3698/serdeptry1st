@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const cloudinary = require('cloudinary').v2;
-const Vocab = require('../models/Word'); // ✅ Apna path verify kar lena
+const Vocab = require('../models/Word'); // Apna path verify kar lena
 const multer = require('multer');
 const fs = require('fs');
 const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 
-// 🔥 Cloudinary Setup (Keep existing)
+// 🔥 Cloudinary Setup
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -16,22 +16,21 @@ cloudinary.config({
 
 const upload = multer({ dest: 'uploads/' });
 
-// 🔥 UPDATED EDUCATIONAL AESTHETIC (Now includes specific callout instructions)
-// Key change: Minimalist flat-style illustrative context, situational storytelling, clear expression, specific callout type
-const VOCAB_LEARNING_STYLE = "flat illustrative visual metaphor, situational storytelling with expressive characters, highly contextual, minimalist color block background. A crucial element is a clean thought or speech bubble with clear, bold text callout that specifically uses the target phrase in a declarative sentence to explain the exact meaning. Easy to understand educational concept, clean lines. Like the example style.";
+// 🔥 EDUCATIONAL AESTHETIC (Focus on Meaning & Context)
+const VOCAB_LEARNING_STYLE = "clear visual metaphor, situational storytelling, expressive elements demonstrating the exact meaning, clean educational illustration, highly contextual, minimalist background so the focus is on the action/emotion, easy to understand concept";
 
 // ==========================================
-// 🔥 SCENE-BASED AI IMAGE GENERATION (Gemini + Imagen 3) - UPDATED ROUTE
+// 🔥 SCENE-BASED AI IMAGE GENERATION (Gemini + Imagen 3)
 // ==========================================
 router.post('/generate', async (req, res) => {
     try {
-        const { phrase, actionType, userId, customPrompt } = req.body;
-
+        const { phrase, actionType, userId, customPrompt } = req.body; 
+        
         if (!phrase || !userId) {
             return res.status(400).json({ error: 'Phrase and UserID required!' });
         }
 
-        // 1. Google Cloud Authentication (Keep existing)
+        // 1. Google Cloud Authentication
         const auth = new GoogleAuth({
             scopes: 'https://www.googleapis.com/auth/cloud-platform'
         });
@@ -40,27 +39,25 @@ router.post('/generate', async (req, res) => {
         const accessToken = (await client.getAccessToken()).token;
 
         // ========================================================
-        // 🔥 STEP 1: AI SE SCENE AUR CALLOUT SOCHWAO (Educational Context) - UPDATED
+        // 🔥 STEP 1: AI SE SCENE SOCHWAO (Educational Context)
         // ========================================================
-        console.log(`🧠 AI is conceptualizing a structured visual for word: "${phrase}"...`);
+        console.log(`🧠 AI is thinking of a situation for word: "${phrase}"...`);
         const geminiEndpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-1.5-flash:generateContent`;
-
-        // Update instructions to be structural (Scene + Callout) and match the reference image style
+        
         let geminiSystemInstruction = `You are an expert visual educator. 
-        Your job is to think of a single, highly meaningful real-world situation and a single declarative sentence for a visual callout (speech or thought bubble) that explains the core meaning of the given English word.
-        The entire scene, including the callout text, must make the definition instantly obvious through action and text.
-        Output ONLY a structured format: 'Scene: [detailed description] Callout: [the simple declarative sentence using the word to explain it]'.
-        Follow the minimalist, clean illustrative style of the example provided, focusing on expressive action and a clean callout.`;
+        Your job is to think of a single, highly meaningful real-world situation or visual metaphor that perfectly EXPLAINS the core meaning of the given English word to a student.
+        The scene must make the definition instantly obvious through action, expression, or contrast.
+        Output ONLY the descriptive scene in English. Do not include any introductory words, explanations, or quotes.`;
 
-        let userQueryText = `Word to explain visually and with a sentence: "${phrase}". Describe the perfect structured scene and callout.`;
+        let userQueryText = `Word to explain visually: "${phrase}". Describe the perfect explanatory scene.`;
 
         if (actionType === 'refine') {
-            geminiSystemInstruction += " Focus on integrating the user's direct direction into both the scene description and the callout text sentence.";
+            geminiSystemInstruction += " Make the scene clear and highly focused on the specific setup requested.";
             if (customPrompt && customPrompt.trim() !== "") {
-                userQueryText += `\n\nCRITICAL USER DIRECTION: Integrate this specific idea: "${customPrompt}" into the scene and callout. Ensure the callout sentence clearly defines "${phrase}".`;
+                userQueryText += `\n\nCRITICAL USER DIRECTION: The user wants the scene to specifically include or be based on this idea: "${customPrompt}". Blend this idea perfectly with the actual meaning of the word "${phrase}" so the visual still explains the word accurately.`;
             }
         } else if (actionType === 'regenerate') {
-            geminiSystemInstruction += " Brainstorm a completely different creative angle, metaphor, or setting to explain this word. Ensure a clear callout with a new, equally accurate sentence.";
+            geminiSystemInstruction += " Think of a completely different creative angle, metaphor, or alternative real-world setting to explain this word visually.";
         }
 
         const geminiResponse = await fetch(geminiEndpoint, {
@@ -77,34 +74,23 @@ router.post('/generate', async (req, res) => {
         });
 
         const geminiData = await geminiResponse.json();
-
-        // New parsing structure for Scene + Callout
+        
         let visualScenePrompt = `A high-quality educational illustration showing the concept of "${phrase}".`;
-        let calloutText = `Go on.`; // Default fallback sentence
-
+        
         if (geminiData.candidates && geminiData.candidates[0]?.content?.parts[0]?.text) {
-            const geminiRawOutput = geminiData.candidates[0].content.parts[0].text.trim();
-            // Simple logic to parse the expected structured output
-            const sceneSplit = geminiRawOutput.split('Callout:');
-            if (sceneSplit.length === 2) {
-                visualScenePrompt = sceneSplit[0].replace('Scene:', '').trim();
-                calloutText = sceneSplit[1].trim();
-            } else {
-                console.warn("Gemini output wasn't structured perfectly, using raw output for scene and default callout.");
-                visualScenePrompt = geminiRawOutput;
-            }
+            visualScenePrompt = geminiData.candidates[0].content.parts[0].text.trim();
         }
 
-        console.log(`🎬 AI Conceptualized Structured Scene: "${visualScenePrompt}" with Callout Text: "${calloutText}"`);
+        console.log(`🎬 AI Conceptualized Educational Scene: "${visualScenePrompt}"`);
 
         // ========================================================
-        // 🔥 STEP 2: GENERATE IMAGE FROM THE STRUCTURED SCENE (Imagen 3) - UPDATED
+        // 🔥 STEP 2: GENERATE IMAGE FROM THE SCENE (Imagen 3)
         // ========================================================
-        console.log("🎨 Sending structured scene to Imagen 3...");
+        console.log("🎨 Sending scene to Imagen 3...");
         const imagenEndpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/imagen-3.0-generate-001:predict`;
-
-        // Compose final prompt to enforce the specific callout style and text placement
-        const finalImagenPrompt = `${visualScenePrompt}. A dominant thought bubble with clear bold text is positioned above the scene, and it contains the specific phrase: "${calloutText}". ${VOCAB_LEARNING_STYLE}`;
+        
+        // Final prompt = Gemini's Scene + Our Vocabulary Learning Aesthetic
+        const finalImagenPrompt = `${visualScenePrompt}. ${VOCAB_LEARNING_STYLE}`;
 
         const imagenResponse = await fetch(imagenEndpoint, {
             method: 'POST',
@@ -114,7 +100,7 @@ router.post('/generate', async (req, res) => {
             },
             body: JSON.stringify({
                 instances: [{ prompt: finalImagenPrompt }],
-                parameters: {
+                parameters: { 
                     sampleCount: 1,
                     aspectRatio: "1:1"
                 }
@@ -131,25 +117,25 @@ router.post('/generate', async (req, res) => {
         const base64Image = imagenData.predictions[0].bytesBase64Encoded;
         const dataUri = `data:image/png;base64,${base64Image}`;
 
-        // 3. Upload to Cloudinary (Folder name updated for vocab app - keep existing)
+        // 3. Upload to Cloudinary (Folder name updated for vocab app)
         const cloudResponse = await cloudinary.uploader.upload(dataUri, {
-            folder: "vocab_learning_ai",
+            folder: "vocab_learning_ai", 
             public_id: `${userId.split('@')[0]}_ai_${phrase.replace(/\s+/g, '_')}_${Date.now()}`
         });
 
         const finalImageUrl = cloudResponse.secure_url;
 
-        // 4. Update Database (Safe Update for both String and Array fields - keep existing)
+        // 4. Update Database (Safe Update for both String and Array fields)
         await Vocab.findOneAndUpdate(
             { userId: userId, word: phrase.toLowerCase() },
-            {
+            { 
                 $push: { imageUrls: finalImageUrl }, // New field: Array mein append karo
                 $set: { imageUrl: finalImageUrl }    // Old field: Backup ke liye update karo
             },
             { returnDocument: 'after' }
         );
 
-        // 5. Send Response (keep existing)
+        // 5. Send Response
         res.status(200).json({ imageUrl: finalImageUrl });
 
     } catch (error) {
@@ -159,7 +145,7 @@ router.post('/generate', async (req, res) => {
 });
 
 // ==========================================
-// CUSTOM IMAGE UPLOAD ROUTE (Keep existing, no change)
+// 🔥 CUSTOM IMAGE UPLOAD ROUTE
 // ==========================================
 router.post('/upload-custom', upload.single('image'), async (req, res) => {
     try {
@@ -206,7 +192,7 @@ router.post('/upload-custom', upload.single('image'), async (req, res) => {
 
 
 // ==========================================
-// WEB IMPORT & AUTO-SEARCH ROUTE (Keep existing, no change)
+// 🔥 WEB IMPORT & AUTO-SEARCH ROUTE
 // ==========================================
 router.post('/import-web', async (req, res) => {
     try {
