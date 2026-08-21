@@ -119,6 +119,22 @@ router.post("/define", async (req, res) => {
   }
 });
 
+// routes/vocab.js ke andar ye add kar lijiye
+router.delete("/delete/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedWord = await Vocab.findByIdAndDelete(id);
+    
+    if (!deletedWord) {
+      return res.status(404).json({ success: false, message: "Word not found in DB." });
+    }
+    
+    res.json({ success: true, message: "Word deleted successfully!" });
+  } catch (err) {
+    console.error("Delete Word Error:", err);
+    res.status(500).json({ success: false, message: "Failed to delete word." });
+  }
+});
 
 // 🔥 UPDATED ROUTE: Merges Vocab History with SRS Data
 router.get("/history/:userId", async (req, res) => {
@@ -599,6 +615,39 @@ router.post("/followup-chat", async (req, res) => {
   } catch (error) {
     console.error("Followup Chat Error:", error.message);
     return res.status(503).json({ success: false, message: "AI Teacher unavailable" });
+  }
+});
+
+// 🔥 NAYA ROUTE: Inspiration Tags update karne ke liye
+router.post("/update-tags", async (req, res) => {
+  try {
+    const { word, userId, tags } = req.body;
+
+    if (!word || !userId) {
+      return res.status(400).json({ success: false, message: "Missing Data: Word or userId nahi mila!" });
+    }
+
+    const targetWord = word.trim().toLowerCase();
+
+    const updatedVocab = await Vocab.findOneAndUpdate(
+      { word: targetWord, userId: userId },
+      { $set: { tags: tags || [] } },
+      { new: true } 
+    );
+
+    if (!updatedVocab) {
+      return res.status(404).json({ success: false, message: "History me ye word nahi mila!" });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: "Inspiration tags updated! 🏷️", 
+      data: updatedVocab 
+    });
+
+  } catch (error) {
+    console.error("❌ Update Tags Error:", error);
+    return res.status(500).json({ success: false, message: "Tags save nahi ho paye!" });
   }
 });
 

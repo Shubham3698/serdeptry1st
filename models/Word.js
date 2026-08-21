@@ -17,7 +17,8 @@ const VocabSchema = new mongoose.Schema({
   sentences: { type: String, required: true },
   imageUrl: { type: String, default: "" }, // Purana field
   imageUrls: { type: [String], default: [] }, // Multiple Images ke liye
-  chatHistory: { type: [ChatMessageSchema], default: [] } // 🔥 NAYA FIELD: Follow-up chat store karne ke liye
+  chatHistory: { type: [ChatMessageSchema], default: [] }, // 🔥 NAYA FIELD: Follow-up chat store karne ke liye
+  tags: { type: [String], default: [] }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Vocab", VocabSchema);
