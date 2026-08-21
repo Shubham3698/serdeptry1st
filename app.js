@@ -110,6 +110,7 @@ const courseRoutes = require('./routes/english/courseRoutes');
 const aiTutorRoutes = require('./routes/english/aiTutor');
 const squadRoutes = require('./routes/english/squads');
 const youtubeRoute = require('./routes/english/youtubeRoute');
+const srsRoutes = require('./routes/english/srsRoutes');
 
 // =====================
 // Routes Use
@@ -128,15 +129,19 @@ app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/english-community/users", englishUsersRouter);
 app.use("/api/english-posts", englishPostRoutes);
 app.use("/api/eng-payment", engPaymentRoutes);
-app.use("/api/words", wordRoutes);
-app.use("/api/notifications", notificationRoutes);
 
+// 🔥 THE FIX: srsRoutes is now placed BEFORE wordRoutes 🔥
+app.use('/api/words', srsRoutes);
+app.use("/api/words", wordRoutes);
+
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/personal-vault", personalVaultRoutes);
 app.use('/api/image', imgGenerationRoute);
 app.use('/api', courseRoutes);
 app.use('/api/ai-tutor', aiTutorRoutes);
 app.use('/api/squads', squadRoutes);
 app.use('/api', youtubeRoute);
+
 
 // =====================
 // Test Route (Deployment Check)
