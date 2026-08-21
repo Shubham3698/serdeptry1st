@@ -73,4 +73,43 @@ router.post('/srs-update', async (req, res) => {
   }
 });
 
+// 🔥 NAYA ROUTE: SRS Progress Reset karne ke liye
+router.post('/srs-reset', async (req, res) => {
+  try {
+    const { wordId } = req.body; 
+
+    if (!wordId) return res.status(400).json({ success: false, message: "wordId is missing!" });
+
+    // 1. Original word find karo taaki userId aur word text mil jaye
+    const Vocab = require('../../models/Word'); // Path adjust kar lena agar zaroorat ho
+    const UserSRS = require('../../models/english/UserSRS'); 
+
+    const wordDoc = await Vocab.findById(wordId);
+    if (!wordDoc) return res.status(404).json({ success: false, message: "Word not found" });
+
+    const { userId, word } = wordDoc;
+
+    // 2. SRS DB mein word dhoondo
+    let srsItem = await UserSRS.findOne({ userId, word });
+    if (!srsItem) {
+      srsItem = new UserSRS({ userId, word });
+    }
+
+    // 3. Sab kuch ZERO (default) pe set kar do (Turant Due ho jayega)
+    srsItem.nextReviewDate = new Date(); // Abhi ke abhi due
+    srsItem.interval = 0;
+    srsItem.easeFactor = 2.5;
+    srsItem.reviewCount = 0;
+
+    await srsItem.save();
+    
+    console.log(`🔄 SUCCESS: SRS Reset for "${word}"`);
+    res.json({ success: true, message: "Progress reset successfully!" });
+
+  } catch (error) {
+    console.error("SRS Reset Error:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
 module.exports = router;
