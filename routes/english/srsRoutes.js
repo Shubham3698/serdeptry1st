@@ -112,4 +112,48 @@ router.post('/srs-reset', async (req, res) => {
   }
 });
 
+// 🔥 NAYA ROUTE: BULK SRS RESET (Poori list ek sath reset karne ke liye)
+router.post('/srs-bulk-reset', async (req, res) => {
+  try {
+    const { wordIds } = req.body; 
+
+    if (!wordIds || !Array.isArray(wordIds)) {
+      return res.status(400).json({ success: false, message: "wordIds array is missing!" });
+    }
+
+    const Vocab = require('../../models/Word');
+    const UserSRS = require('../../models/english/UserSRS'); 
+
+    // 1. Un sabhi words ko DB se nikaalo
+    const words = await Vocab.find({ _id: { $in: wordIds } });
+
+    // 2. Bulk Operation prepare karo (Super Fast speed ke liye)
+    const bulkOps = words.map(wordDoc => ({
+      updateOne: {
+        filter: { userId: wordDoc.userId, word: wordDoc.word },
+        update: {
+          $set: {
+            nextReviewDate: new Date(), // Turant due ho jayega
+            interval: 0,
+            easeFactor: 2.5,
+            reviewCount: 0
+          }
+        },
+        upsert: true // Agar pehle se nahi tha, toh naya bana dega
+      }
+    }));
+
+    if (bulkOps.length > 0) {
+      await UserSRS.bulkWrite(bulkOps);
+    }
+
+    console.log(`🔄 BULK SUCCESS: ${wordIds.length} words reset!`);
+    res.json({ success: true, message: "Bulk Progress reset successfully!" });
+
+  } catch (error) {
+    console.error("Bulk SRS Reset Error:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
 module.exports = router;
