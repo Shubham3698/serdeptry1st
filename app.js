@@ -111,6 +111,7 @@ const aiTutorRoutes = require('./routes/english/aiTutor');
 const squadRoutes = require('./routes/english/squads');
 const youtubeRoute = require('./routes/english/youtubeRoute');
 const srsRoutes = require('./routes/english/srsRoutes');
+const myBucketRoutes = require("./routes/english/myBucketRoutes");
 
 // =====================
 // Routes Use
@@ -133,6 +134,8 @@ app.use("/api/eng-payment", engPaymentRoutes);
 // 🔥 THE FIX: srsRoutes is now placed BEFORE wordRoutes 🔥
 app.use('/api/words', srsRoutes);
 app.use("/api/words", wordRoutes);
+
+app.use("/api/mybucket", myBucketRoutes);
 
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/personal-vault", personalVaultRoutes);
