@@ -1,4 +1,3 @@
-
 // routes/myBucketRoutes.js
 const express = require('express');
 const router = express.Router();
@@ -23,12 +22,22 @@ router.post('/add-vocab', async (req, res) => {
   }
 });
 
-// GET: Fetch all words (For later use in your app)
-router.get('/get-vocab', async (req, res) => {
+// 🔥 UPDATED GET ROUTE: Fetch words for a specific user 🔥
+router.get('/vocab', async (req, res) => {
   try {
-    const words = await MyBucket.find().sort({ addedAt: -1 });
-    res.status(200).json({ success: true, data: words });
+    const { email } = req.query; // Frontend se email fetch kar rahe hain
+    
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    // Sirf current user ke words database se nikalo
+    const words = await MyBucket.find({ userEmail: email }).sort({ addedAt: -1 });
+    
+    // Response mein 'vocab' bhej rahe hain kyunki frontend wahi expect kar raha hai
+    res.status(200).json({ success: true, vocab: words });
   } catch (error) {
+    console.error("Fetch Vocab Error:", error);
     res.status(500).json({ success: false, message: "Server error fetching words" });
   }
 });
