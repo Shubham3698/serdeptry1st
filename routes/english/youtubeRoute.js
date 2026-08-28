@@ -41,13 +41,22 @@ router.post('/get-transcript', async (req, res) => {
 
         const response = await axios.request(options);
         
-        // API response ek array of objects hota hai
+        // API response
         let rawTranscript = response.data;
 
-        if (!rawTranscript || rawTranscript.length === 0) {
+        // 🚨 NAYA CHECK 1: Agar API ne koi object/error return kiya (e.g. "Not subscribed")
+        if (rawTranscript && rawTranscript.message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: `RapidAPI Error: ${rawTranscript.message}` 
+            });
+        }
+
+        // 🚨 NAYA CHECK 2: Confirm karein ki rawTranscript sach mein ek Array hai
+        if (!Array.isArray(rawTranscript) || rawTranscript.length === 0) {
             return res.status(404).json({
                 success: false,
-                error: "Is video par captions/subtitles available nahi hain."
+                error: "Is video par captions/subtitles available nahi hain ya API response invalid hai."
             });
         }
 
