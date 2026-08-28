@@ -42,26 +42,13 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // 1. Allow requests with no origin (mobile apps, curl, postman)
     if (!origin) return callback(null, true);
-
-    // 2. Allow Chrome Extensions
-    if (origin.startsWith("chrome-extension://")) {
-      return callback(null, true);
-    }
-
-    // 3. Allow Capacitor Mobile Apps
-    if (origin === "http://localhost" || origin === "capacitor://localhost") {
-      return callback(null, true);
-    }
-
-    // 4. Allow whitelisted domains OR any Vercel preview branch
+    if (origin.startsWith("chrome-extension://")) return callback(null, true);
+    if (origin === "http://localhost" || origin === "capacitor://localhost") return callback(null, true);
+    
     const isVercelPreview = origin && origin.endsWith(".vercel.app");
-    if (allowedOrigins.includes(origin) || isVercelPreview) {
-      return callback(null, true);
-    }
+    if (allowedOrigins.includes(origin) || isVercelPreview) return callback(null, true);
 
-    // ❌ Block everything else
     console.log("❌ CORS Blocked for Origin:", origin);
     return callback(new Error("Not allowed by CORS"));
   },
@@ -71,15 +58,11 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
-// Extra Pre-flight handling for complex requests
 app.options("*", cors());
-
 app.use(logger("dev"));
 
-// 🔥 413 Error Fix (Original limits kept intact)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: false }));
-
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -103,7 +86,6 @@ const engPaymentRoutes = require("./routes/engPaymentRoutes");
 const wordRoutes = require("./routes/wordRoutes");
 
 const personalVaultRoutes = require("./routes/english/PersonalVault");
-
 const notificationRoutes = require("./routes/notificationRoutes");
 const imgGenerationRoute = require('./routes/imggeneration');
 const courseRoutes = require('./routes/english/courseRoutes');
@@ -112,6 +94,9 @@ const squadRoutes = require('./routes/english/squads');
 const youtubeRoute = require('./routes/english/youtubeRoute');
 const srsRoutes = require('./routes/english/srsRoutes');
 const myBucketRoutes = require("./routes/english/myBucketRoutes");
+
+// 🚀 YAHAN FIX KIYA HAI: Path me '/english/' add kiya taaki sahi jagah se file uthaye
+const ytBucketRoutes = require("./routes/english/youtubeRoute"); 
 
 // =====================
 // Routes Use
@@ -131,11 +116,12 @@ app.use("/api/english-community/users", englishUsersRouter);
 app.use("/api/english-posts", englishPostRoutes);
 app.use("/api/eng-payment", engPaymentRoutes);
 
-// 🔥 THE FIX: srsRoutes is now placed BEFORE wordRoutes 🔥
 app.use('/api/words', srsRoutes);
 app.use("/api/words", wordRoutes);
-
 app.use("/api/mybucket", myBucketRoutes);
+
+// 🚀 YT Bucket mapped to API
+app.use("/api/ytbucket", youtubeRoute );
 
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/personal-vault", personalVaultRoutes);
@@ -145,9 +131,8 @@ app.use('/api/ai-tutor', aiTutorRoutes);
 app.use('/api/squads', squadRoutes);
 app.use('/api', youtubeRoute);
 
-
 // =====================
-// Test Route (Deployment Check)
+// Test Route
 // =====================
 app.get("/api/test", (req, res) => {
   res.json({ 
@@ -158,7 +143,7 @@ app.get("/api/test", (req, res) => {
 });
 
 // =====================
-// 404 Handler
+// 404 & Error Handlers
 // =====================
 app.use((req, res) => {
   res.status(404).json({
@@ -167,9 +152,6 @@ app.use((req, res) => {
   });
 });
 
-// =====================
-// Global Error Handler
-// =====================
 app.use((err, req, res, next) => {
   console.error("🔥 Server Error Log:", err.stack);
   res.status(err.status || 500).json({
@@ -178,9 +160,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// =====================
-// Start Server
-// =====================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
