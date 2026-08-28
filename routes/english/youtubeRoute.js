@@ -99,13 +99,16 @@ router.post('/get-transcript', async (req, res) => {
             if (item.start !== undefined) time = parseFloat(item.start);
             else if (item.offset !== undefined) time = parseFloat(item.offset);
             
+            // 🚨 MEGA FIX: Force the text to be a String no matter what RapidAPI sends!
+            let rawText = (item.text !== undefined && item.text !== null) ? String(item.text) : "";
+            
             return {
                 start: time, 
-                text: (item.text || "")
+                text: rawText
                     .replace(/&amp;/g, "&")
                     .replace(/&#39;/g, "'") // Single quotes clean
                     .replace(/&quot;/g, '"') // Double quotes clean
-                    .replace(/&gt;/g, ">")  // Greater than clean (aapke logs me the)
+                    .replace(/&gt;/g, ">")  // Greater than clean 
                     .replace(/&lt;/g, "<")
             };
         });
@@ -121,7 +124,7 @@ router.post('/get-transcript', async (req, res) => {
         console.error("🔥 RapidAPI Fetch Error:", error.message); 
         return res.status(500).json({ 
             success: false, 
-            error: "Transcript fetch karne mein error aayi. API down ho sakti hai." 
+            error: "Transcript fetch karne mein error aayi. API down ho sakti hai ya invalid video link hai." 
         });
     }
 });
