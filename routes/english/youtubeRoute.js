@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const { YoutubeTranscript } = require('youtube-transcript'); // 🚀 NAYA SIMPLE TARIKA IMPORT KIYA
 const YoutubeBucket = require('../../models/english/YoutubeBucket'); 
 
 // URL se Video ID nikalne ka function
@@ -10,7 +11,7 @@ function extractVideoId(url) {
     return match ? match[1] : null;
 }
 
-// 🚀 FOOLPROOF ARRAY EXTRACTOR (Data kahi bhi chhupa ho, nikal lega)
+// 🚀 FOOLPROOF ARRAY EXTRACTOR (RapidAPI ke liye fallback)
 function findTranscriptArray(data) {
     if (!data) return [];
     
@@ -44,23 +45,53 @@ function findTranscriptArray(data) {
 }
 
 // ==========================================
-// 1. FETCH YOUTUBE TRANSCRIPT (VIA RAPIDAPI)
+// 1. FETCH YOUTUBE TRANSCRIPT (DUAL ENGINE)
 // ==========================================
 router.post('/get-transcript', async (req, res) => {
+    const { videoUrl } = req.body;
+
+    if (!videoUrl) return res.status(400).json({ success: false, error: "Please provide a YouTube URL." });
+    
+    const videoId = extractVideoId(videoUrl);
+    if (!videoId) return res.status(400).json({ success: false, error: "Invalid YouTube URL format." });
+
+    console.log(`🎬 Fetching Transcript for Video ID: ${videoId}`);
+
+    // ==========================================
+    // 🛠️ ENGINE 1: DIRECT FREE METHOD (youtube-transcript)
+    // ==========================================
     try {
-        const { videoUrl } = req.body;
-
-        if (!videoUrl) {
-            return res.status(400).json({ success: false, error: "Please provide a YouTube URL." });
+        console.log("⚡ Engine 1: Direct Fetch try kar raha hai...");
+        
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+        
+        if (transcript && transcript.length > 0) {
+            const formattedScript = transcript.map(item => {
+                // youtube-transcript offset ko milliseconds me deta hai, usko seconds me convert kar rahe hain
+                const timeInSeconds = item.offset / 1000; 
+                return {
+                    start: timeInSeconds,
+                    text: String(item.text)
+                        .replace(/&amp;/g, "&")
+                        .replace(/&#39;/g, "'")
+                        .replace(/&quot;/g, '"')
+                        .replace(/&gt;/g, ">")
+                        .replace(/&lt;/g, "<")
+                };
+            });
+            
+            console.log(`✅ Engine 1 Success! Sent ${formattedScript.length} lines to frontend.`);
+            return res.status(200).json({ success: true, script: formattedScript });
         }
+    } catch (engine1Error) {
+        console.log("⚠️ Engine 1 Fail ho gaya (Shayad YouTube ne block kiya):", engine1Error.message);
+        console.log("🔄 Engine 2 (RapidAPI) par switch kar rahe hain...");
+    }
 
-        const videoId = extractVideoId(videoUrl);
-        if (!videoId) {
-            return res.status(400).json({ success: false, error: "Invalid YouTube URL format." });
-        }
-
-        console.log(`🎬 Fetching Transcript for Video ID: ${videoId}`);
-
+    // ==========================================
+    // 🛠️ ENGINE 2: RAPID API FALLBACK
+    // ==========================================
+    try {
         const options = {
             method: 'GET',
             url: `https://youtube-transcript3.p.rapidapi.com/api/transcript-with-url?url=${encodeURIComponent(videoUrl)}&flat_text=false&lang=en`,
@@ -69,66 +100,65 @@ router.post('/get-transcript', async (req, res) => {
                 'x-rapidapi-host': 'youtube-transcript3.p.rapidapi.com',
                 'x-rapidapi-key': process.env.RAPIDAPI_KEY 
             },
-            timeout: 10000 
+            timeout: 50000 // 🚀 TIMEOUT 50 SECONDS
         };
 
         const response = await axios.request(options);
         let rawTranscript = response.data;
 
         // 1. API Error Handle
+        if (rawTranscript && rawTranscript.success === false && rawTranscript.error) {
+            console.log("⚠️ RapidAPI ke hisaab se video me captions nahi hain:", rawTranscript.error.trim());
+            return res.status(404).json({ success: false, error: "Is video ke liye subtitles available nahi hain (RapidAPI Error)." });
+        }
+        
+        // 2. Limit cross ya subscription issue
         if (rawTranscript && rawTranscript.message) {
             return res.status(400).json({ success: false, error: `RapidAPI Error: ${rawTranscript.message}` });
         }
 
-        // 🚨 2. SMART EXTRACTION - Kahi bhi data ho, array nikal aayega
+        // 🚨 3. SMART EXTRACTION
         let transcriptArray = findTranscriptArray(rawTranscript);
 
-        // 3. Array empty ho toh Error
         if (!transcriptArray || transcriptArray.length === 0) {
-            console.error("❌ Array Extract Nahi Hua! Raw Data:", JSON.stringify(rawTranscript).substring(0, 300));
             return res.status(404).json({
                 success: false,
                 error: "Is video par captions/subtitles available nahi hain ya API response invalid hai."
             });
         }
 
-        // 🚀 4. FORMATTING - (Frontend ke liye Start aur Clean Text)
+        // 🚀 4. FORMATTING
         const formattedScript = transcriptArray.map((item) => {
-            // 'start' aur 'offset' dono check karega
             let time = 0;
             if (item.start !== undefined) time = parseFloat(item.start);
             else if (item.offset !== undefined) time = parseFloat(item.offset);
             
-            // 🚨 MEGA FIX: Force the text to be a String no matter what RapidAPI sends!
             let rawText = (item.text !== undefined && item.text !== null) ? String(item.text) : "";
             
             return {
                 start: time, 
                 text: rawText
                     .replace(/&amp;/g, "&")
-                    .replace(/&#39;/g, "'") // Single quotes clean
-                    .replace(/&quot;/g, '"') // Double quotes clean
-                    .replace(/&gt;/g, ">")  // Greater than clean 
+                    .replace(/&#39;/g, "'")
+                    .replace(/&quot;/g, '"')
+                    .replace(/&gt;/g, ">")
                     .replace(/&lt;/g, "<")
             };
         });
 
-        console.log(`✅ Success! Sent ${formattedScript.length} lines to frontend.`);
-        
-        return res.status(200).json({ 
-            success: true, 
-            script: formattedScript 
-        });
+        console.log(`✅ Engine 2 (RapidAPI) Success! Sent ${formattedScript.length} lines.`);
+        return res.status(200).json({ success: true, script: formattedScript });
 
-    } catch (error) {
-        console.error("🔥 RapidAPI Fetch Error:", error.message); 
-        return res.status(500).json({ 
-            success: false, 
-            error: "Transcript fetch karne mein error aayi. API down ho sakti hai ya invalid video link hai." 
-        });
+    } catch (engine2Error) {
+        console.error("🔥 Dono Engine Fail! Final Error:", engine2Error.message); 
+        
+        if (engine2Error.code === 'ECONNABORTED' || engine2Error.message.includes('timeout')) {
+            return res.status(504).json({ success: false, error: "Server bohot slow hai. Kripya 2-3 minute baad try karein." });
+        }
+
+        return res.status(500).json({ success: false, error: "Transcript fetch karne mein error aayi. API block ho gayi hai." });
     }
 });
-
 
 // ==========================================
 // 2. SAVE WORD TO YT BUCKET ROUTE
@@ -137,13 +167,7 @@ router.post('/add-vocab', async (req, res) => {
     try {
         const { word, context, videoUrl, timestamp, userEmail } = req.body;
         
-        const newWord = new YoutubeBucket({ 
-            word, 
-            context, 
-            videoUrl, 
-            timestamp, 
-            userEmail 
-        });
+        const newWord = new YoutubeBucket({ word, context, videoUrl, timestamp, userEmail });
         
         await newWord.save();
         return res.status(200).json({ success: true, message: "Word successfully saved to YT Bucket!" });
@@ -152,7 +176,6 @@ router.post('/add-vocab', async (req, res) => {
         return res.status(500).json({ success: false, error: "Failed to save word." });
     }
 });
-
 
 // ==========================================
 // 3. FETCH SAVED WORDS FOR DRAWER
