@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-// 🚀 Wapas sabse reliable package par shift kiya
-const { YoutubeTranscript } = require('youtube-transcript'); 
+const axios = require('axios'); // 🚀 API call ke liye Axios
 const YoutubeBucket = require('../../models/english/YoutubeBucket'); 
 
 // URL se Video ID nikalne ka function
@@ -12,7 +11,7 @@ function extractVideoId(url) {
 }
 
 // ==========================================
-// 1. FETCH YOUTUBE TRANSCRIPT ROUTE
+// 1. FETCH YOUTUBE TRANSCRIPT (VIA RAPIDAPI)
 // ==========================================
 router.post('/get-transcript', async (req, res) => {
     try {
@@ -28,14 +27,22 @@ router.post('/get-transcript', async (req, res) => {
             return res.status(400).json({ success: false, error: "Invalid YouTube URL format." });
         }
 
-        // 🚀 Purana wala reliable method jo kabhi khali array nahi deta
-        let rawTranscript = [];
-        try {
-            rawTranscript = await YoutubeTranscript.fetchTranscript(videoId);
-        } catch (langErr) {
-            console.log("Default fetch failed, retrying en:", langErr.message);
-            rawTranscript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-        }
+        // 🚀 RAPID API CALL (Bot protection bypass)
+        const options = {
+            method: 'GET',
+            url: `https://youtube-transcript3.p.rapidapi.com/api/transcript-with-url?url=${encodeURIComponent(videoUrl)}&flat_text=false&lang=en`,
+            headers: {
+                'Content-Type': 'application/json',
+                'x-rapidapi-host': 'youtube-transcript3.p.rapidapi.com',
+                // 🚀 Yahan sirf .env se key aayegi, hardcoded nahi!
+                'x-rapidapi-key': process.env.RAPIDAPI_KEY 
+            }
+        };
+
+        const response = await axios.request(options);
+        
+        // API response ek array of objects hota hai
+        let rawTranscript = response.data;
 
         if (!rawTranscript || rawTranscript.length === 0) {
             return res.status(404).json({
@@ -46,8 +53,8 @@ router.post('/get-transcript', async (req, res) => {
 
         // 🚀 Frontend ko jo structure chahiye (start & text)
         const formattedScript = rawTranscript.map((item) => ({
-            start: item.offset / 1000, // Milliseconds ko seconds mein convert kiya
-            text: item.text
+            start: parseFloat(item.start), 
+            text: (item.text || "")
                 .replace(/&amp;/g, "&")
                 .replace(/&#39;/g, "'")
                 .replace(/&quot;/g, '"')
@@ -59,10 +66,10 @@ router.post('/get-transcript', async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Asli YouTube Error:", error.message || error); 
+        console.error("RapidAPI Fetch Error:", error.response ? error.response.data : error.message); 
         return res.status(500).json({ 
             success: false, 
-            error: "Failed to fetch script. Ya toh isme Subtitles (CC) nahi hain, ya English language available nahi hai." 
+            error: "Transcript fetch karne mein error aayi. Shayad API limit cross ho gayi ho ya video par captions disabled hain." 
         });
     }
 });
