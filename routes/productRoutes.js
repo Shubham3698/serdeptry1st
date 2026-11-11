@@ -5,7 +5,6 @@ const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const axios = require("axios");
-const FormData = require("form-data");
 
 // ☁️ CLOUDINARY CONFIG
 cloudinary.config({
@@ -32,13 +31,8 @@ const removeBackgroundAI = async (imageUrl) => {
     const response = await axios({
       method: "post",
       url: "https://api.remove.bg/v1.0/removebg",
-      data: {
-        image_url: imageUrl,
-        size: "auto",
-      },
-      headers: {
-        "X-Api-Key": process.env.REMOVE_BG_API_KEY, 
-      },
+      data: { image_url: imageUrl, size: "auto" },
+      headers: { "X-Api-Key": process.env.REMOVE_BG_API_KEY },
       responseType: "arraybuffer",
     });
 
@@ -64,7 +58,7 @@ const parseField = (field) => {
 
 // --- ROUTES START ---
 
-// 🔥 2. DYNAMIC WISHLIST TOGGLE (DB mein product ho ya na ho, dono handle karega)
+// 🔥 2. DYNAMIC WISHLIST TOGGLE
 router.post("/action/wishlist/:productId", async (req, res) => {
     try {
         const { productId } = req.params;
@@ -72,11 +66,10 @@ router.post("/action/wishlist/:productId", async (req, res) => {
 
         if (!email) return res.status(401).json({ success: false, message: "Login required!" });
 
-        const User = require("../models/user"); // Check path: User.js ya user.js
+        const User = require("../models/user"); 
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-        // 🔍 Product dhoondo, nahi mile toh naya banao (Auto-Create)
         let product = await Product.findOne({ id: productId });
 
         if (!product) {
@@ -84,7 +77,7 @@ router.post("/action/wishlist/:productId", async (req, res) => {
             product = new Product({
                 id: productId,
                 title: "1st 10 DTF-Sticker Pack", 
-                wishlistCount: 15, // Starting count
+                wishlistCount: 15, 
                 pageType: "stickerPacks",
                 category: "stickers",
                 src: "https://i.pinimg.com/736x/80/07/d8/8007d8ba979d036cb1a6c18aa701f369.jpg"
@@ -92,7 +85,6 @@ router.post("/action/wishlist/:productId", async (req, res) => {
             await product.save();
         }
 
-        // 🔄 Toggle Logic
         const isWishlisted = user.wishlist.includes(product._id);
 
         if (isWishlisted) {
@@ -118,8 +110,7 @@ router.post("/action/wishlist/:productId", async (req, res) => {
     }
 });
 
-// 🔍 1. SEARCH PRODUCTS (Order: Sabse Upar)
-// Isse upar rakhna zaroori hai taaki /:pageType isse intercept na kare
+// 🔍 1. SEARCH PRODUCTS
 router.get("/search", async (req, res) => {
     try {
         const query = req.query.q;
@@ -130,7 +121,7 @@ router.get("/search", async (req, res) => {
         const products = await Product.find({
             $or: [
                 { title: searchRegex },
-                { tags: { $regex: query, $options: "i" } }, // 🔥 Array ke har element mein search
+                { tags: { $regex: query, $options: "i" } }, 
                 { tag: searchRegex },
                 { pageType: searchRegex }
             ]
@@ -145,60 +136,48 @@ router.get("/search", async (req, res) => {
 });
 
 // ➕ 2. ADD DATA
-// ➕ 2. ADD DATA (Admin Panel + Extension Friendly)
 router.post("/add", (req, res, next) => {
-    // 🔥 Check: Agar Extension se JSON data aa raha hai, toh multer skip karo
     if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
         return next(); 
     }
-    // Agar normal file upload hai (React Admin Panel se), toh multer chalne do
+    
+    // 🔥 YAHAN CHANGE KIYA HAI: Multer error ab yahi catch hoga!
     upload.fields([
         { name: "image", maxCount: 1 }, 
         { name: "subImages", maxCount: 10 }
-    ])(req, res, next);
+    ])(req, res, (err) => {
+        if (err) {
+            console.error("🔥 Multer/Cloudinary Upload Error:", err);
+            return res.status(500).json({ success: false, message: "Image Upload Failed: " + err.message });
+        }
+        next();
+    });
 }, async (req, res) => {
     try {
         let productData = { ...req.body };
 
-        // 🔥 1. IMAGE HANDLING (UPDATED)
         if (req.files && req.files["image"]) {
-            // ✅ Normal upload (React Admin Panel)
             let uploadedUrl = req.files["image"][0].path;
-
-            // Background Removal check (Boolean or String handle)
             if (req.body.removeBg === "true" || req.body.removeBg === true) {
                 uploadedUrl = await removeBackgroundAI(uploadedUrl);
             }
             productData.src = uploadedUrl;
-
         } else if (req.body.src) {
-            // ✅ Extension support (Pinterest URL or Base64)
             let finalUrl = req.body.src;
-
-            // Agar extension ne removeBg tick kiya hai
             if (req.body.removeBg === "true" || req.body.removeBg === true) {
-                // Agar URL hai toh AI se clean karwao, agar base64 hai toh sidha upload
                 if (!finalUrl.startsWith('data:image')) {
                     finalUrl = await removeBackgroundAI(finalUrl);
                 } else {
-                    // Base64 data ko Cloudinary pe upload karo
-                    const uploadRes = await cloudinary.uploader.upload(finalUrl, {
-                        folder: "dameeto_products"
-                    });
+                    const uploadRes = await cloudinary.uploader.upload(finalUrl, { folder: "dameeto_products" });
                     finalUrl = uploadRes.secure_url;
                 }
             } else if (!finalUrl.startsWith('https://res.cloudinary.com')) {
-                // Agar removeBg nahi hai par Pinterest URL hai, toh Cloudinary pe backup le lo
-                const uploadRes = await cloudinary.uploader.upload(finalUrl, {
-                    folder: "dameeto_products"
-                });
+                const uploadRes = await cloudinary.uploader.upload(finalUrl, { folder: "dameeto_products" });
                 finalUrl = uploadRes.secure_url;
             }
-            
             productData.src = finalUrl;
         }
 
-        // 🔥 2. SUB IMAGES
         let galleryPaths = [];
         if (req.files && req.files["subImages"]) {
             galleryPaths = req.files["subImages"].map(file => file.path);
@@ -208,43 +187,39 @@ router.post("/add", (req, res, next) => {
         const manualSubImages = parseField(req.body.subImages);
         productData.subImages = [...galleryPaths, ...manualSubImages];
 
-        // 🔥 3. PAGETYPE FIX
-        const cleanPageType = productData.pageType 
-            ? productData.pageType.trim() 
-            : "stickerData";
+        const cleanPageType = productData.pageType ? productData.pageType.trim() : "stickerData";
 
-        // 🔥 4. CREATE PRODUCT
         const newProduct = new Product({
             ...productData,
             pageType: cleanPageType,
-            // ID generation logic intact
             id: `${cleanPageType.substring(0, 2).toLowerCase()}-${Date.now()}`,
-            // Boolean normalize karo
             removeBg: req.body.removeBg === "true" || req.body.removeBg === true
         });
 
         await newProduct.save();
 
-        res.status(201).json({
-            success: true,
-            message: "Product Added Successfully! 🚀",
-            data: newProduct
-        });
+        res.status(201).json({ success: true, message: "Product Added Successfully! 🚀", data: newProduct });
 
     } catch (err) {
         console.error("❌ ADD ERROR:", err);
-        res.status(500).json({
-            success: false,
-            message: err.message
-        });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
 // 🛠️ 3. UPDATE DATA
-router.put("/update/:id", upload.fields([
-    { name: "image", maxCount: 1 },
-    { name: "subImages", maxCount: 10 }
-]), async (req, res) => {
+router.put("/update/:id", (req, res, next) => {
+    // 🔥 YAHAN BHI CHANGE KIYA HAI
+    upload.fields([
+        { name: "image", maxCount: 1 },
+        { name: "subImages", maxCount: 10 }
+    ])(req, res, (err) => {
+        if (err) {
+            console.error("🔥 Multer/Cloudinary Update Error:", err);
+            return res.status(500).json({ success: false, message: "Image Upload Failed: " + err.message });
+        }
+        next();
+    });
+}, async (req, res) => {
     try {
         let updateData = { ...req.body };
 
@@ -275,7 +250,7 @@ router.put("/update/:id", upload.fields([
     }
 });
 
-// 🖼️ 4. SINGLE PRODUCT BY ID (Order: Isse category route se upar rakhein)
+// 🖼️ 4. SINGLE PRODUCT BY ID
 router.get("/single/:id", async (req, res) => {
     try {
         const product = await Product.findOne({ id: req.params.id }); 
@@ -284,7 +259,7 @@ router.get("/single/:id", async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// 📂 5. FETCH BY PAGETYPE (Order: Niche)
+// 📂 5. FETCH BY PAGETYPE
 router.get("/:pageType", async (req, res) => {
     try {
         const data = await Product.find({ pageType: req.params.pageType }).sort({ createdAt: -1 });
