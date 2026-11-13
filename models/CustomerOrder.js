@@ -31,7 +31,7 @@ const customerOrderSchema = new mongoose.Schema({
   paymentStatus: { 
     type: String, 
     // 🔥 YAHAN CHANGE KIYA HAI: Naye Reward wale status add kar diye
-    enum: ["Unpaid", "Paid", "Refunded", "Free Reward", "Game Reward (Paid via 200 Coins)"], 
+enum: ["Unpaid", "Paid", "Refunded", "Free Reward", "Game Reward (Paid via 1000 Coins)", "Game Reward (Paid via 200 Coins)"],
     default: "Unpaid" 
   },
   razorpayOrderId: { type: String, default: "" },
