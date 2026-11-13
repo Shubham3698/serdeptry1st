@@ -23,15 +23,41 @@ router.post("/create", async (req, res) => {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
-      paymentMethod // 🔥 Frontend se ye nayi field aayegi
+      paymentMethod, // 🔥 Frontend se ye nayi field aayegi
+      paymentStatus // 🔥 Nayi field frontend se aa sakti hai
     } = req.body;
 
     // A. Validation
     if (!userName || !userEmail || !shortOrderId) {
-      return res.status(400).json({ success: false, message: "Missing required order or payment data" });
+      return res.status(400).json({ success: false, message: "Missing required order data" });
     }
 
-    // 🔥 NEW LOGIC: Agar Payment Method "Link Share" hai toh verification skip karo
+    // 🔥 NEW LOGIC: Agar Order ka total 0 hai, ya payment status "Free Reward" / "Game Reward..." hai,
+    // Toh usko direct bina kisi Razorpay verification ke save kardo.
+    if (total === 0 || paymentStatus === "Free Reward" || (paymentStatus && paymentStatus.includes("Game Reward"))) {
+      const order = new CustomerOrder({
+        userName,
+        userEmail,
+        address, 
+        products,
+        subtotal,
+        discount: discount || 0,
+        total: 0,
+        message,
+        shortOrderId,
+        paymentStatus: paymentStatus || "Free Reward", 
+        orderStatus: "Received",
+      });
+
+      await order.save();
+      return res.status(201).json({
+        success: true,
+        message: "Free Reward Order Created Successfully",
+        data: order,
+      });
+    }
+
+    // 🔥 LOGIC: Agar Payment Method "Link Share" hai toh verification skip karo
     if (paymentMethod === "Link Share") {
       const order = new CustomerOrder({
         userName,
@@ -56,7 +82,7 @@ router.post("/create", async (req, res) => {
       });
     }
 
-    // B. Signature Verification (Sirf Direct Pay ke liye)
+    // B. Signature Verification (Sirf Normal Direct Pay ke liye)
     if (!razorpay_payment_id) {
         return res.status(400).json({ success: false, message: "Missing payment ID" });
     }
@@ -71,7 +97,7 @@ router.post("/create", async (req, res) => {
       return res.status(400).json({ success: false, message: "Payment verification failed!" });
     }
 
-    // C. Database mein Save karo (Using shortOrderId from Frontend)
+    // C. Database mein Save karo (Normal Paid order)
     const order = new CustomerOrder({
       userName,
       userEmail,
@@ -81,7 +107,7 @@ router.post("/create", async (req, res) => {
       discount,
       total,
       message,
-      shortOrderId, // 🔥 Asli ID wahi jo user ko dikhi thi
+      shortOrderId,
       paymentStatus: "Paid", 
       orderStatus: "Received",
       razorpayOrderId: razorpay_order_id,
@@ -103,7 +129,7 @@ router.post("/create", async (req, res) => {
 });
 
 // ==========================================
-// 2. CANCEL ORDER REQUEST (Logic Intact)
+// 2. CANCEL ORDER REQUEST 
 // ==========================================
 router.post("/cancel/:id", async (req, res) => {
   try {
@@ -123,7 +149,7 @@ router.post("/cancel/:id", async (req, res) => {
 });
 
 // ==========================================
-// 3. ADMIN & USER FETCH (Logic Intact)
+// 3. ADMIN & USER FETCH 
 // ==========================================
 router.get("/", async (req, res) => {
   try {
@@ -154,7 +180,7 @@ router.get("/user/:email", async (req, res) => {
 });
 
 // ==========================================
-// 4. PATCH ORDER STATUS (Admin Panel)
+// 4. PATCH ORDER STATUS 
 // ==========================================
 router.patch("/:id", async (req, res) => {
   try {
